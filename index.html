@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>gideon 5 star hotel</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        
+        <nav class="nav-bar">
+            <ul>     
+       <li><a href="www.google.com">home</a></li> 
+        <li><a href="www.google.com">contacts</a></li> 
+        <li><a href="www.google.com">about us</a></li> 
+       <li><a href="www.google.com">help</a></li> 
+       </ul>
+        </nav>
+    </header>
+    <div id="heading">
+         <h1>AFFORDABLE PRICE</h1>
+         <h3>any complains about food visit cashier</h3>
+         </div>
+    <main>
+        <section class="food-container">
+            <div class="hero"> 
+            <img src="anh-nguyen-kcA-c3f_3FE-unsplash copy.jpg" alt=" onion rings"  >
+          
+           <h1 class="price">200ksh</h1>
+            <p>onion ring</p>
+         <button
+        class="add-cart-btn"
+        data-name="onion ring"
+        data-price="200"
+        data-image="anh-nguyen-kcA-c3f_3FE-unsplash copy.jpg">
+        🛒 Add to Cart
+    </button>
+            </div>
+            <div class="hero">
+            <img src="anna-tukhfatullina-food-photographer-stylist-Mzy-OjtCI70-unsplash.jpg" alt="cake">
+              <h1 class="price">150ksh</h1>
+            <p> white cake</p>
+         <button
+        class="add-cart-btn"
+        data-name="Rice white"
+        data-price="150"
+        data-image="anna-tukhfatullina-food-photographer-stylist-Mzy-OjtCI70-unsplash.jpg">
+        🛒 Add to Cart
+    </button>
+            </div>
+            <div class="hero">
+            <img src="chad-montano-MqT0asuoIcU-unsplash.jpg" alt="pizza">
+                <h1 class="price">500ksh</h1>
+            <p>italian pizza</p>
+          <button
+        class="add-cart-btn"
+        data-name="italian pizza"
+        data-price="500"
+        data-image="chad-montano-MqT0asuoIcU-unsplash.jpg">
+        🛒 Add to Cart
+    </button>
+            </div>
+            <div class="hero">
+            <img src="joseph-gonzalez-zcUgjyqEwe8-unsplash.jpg" alt="toast bread">
+
+              <h1 class="price">100sh</h1>
+            <p>toast bread</p>
+            <button
+        class="add-cart-btn"
+        data-name="toast bread"
+        data-price="100"
+        data-image="joseph-gonzalez-zcUgjyqEwe8-unsplash.jpg">
+        🛒 Add to Cart
+    </button>
+            </div>
+            <div class="hero">
+            <img src="pexels-1135897-38069166.jpg" alt="beef">
+              <h1 class="price">300sh</h1>
+            <p>american beef</p>
+          <button
+        class="add-cart-btn"
+        data-name="american beef"
+        data-price="300"
+        data-image="pexels-1135897-38069166.jpg">
+        🛒 Add to Cart
+    </button>
+            </div>
+            <div class="hero">
+            <img src="pexels-himanuuu-36989884.jpg" alt="chips mix">
+              <h1 class="price">250sh</h1>
+            <p>chips mix frencies</p>
+            <button
+        class="add-cart-btn"
+        data-name="chips mix frencies"
+        data-price="250"
+        data-image="pexels-himanuuu-36989884.jpg">
+        🛒 Add to Cart
+    </button>
+            </div>
+            <div class="hero">
+            <img src="pexels-himanuuu-36989884.jpg" alt="frenchies">
+               <h1 class="price">160sh</h1>
+            <p>frencs fries</p>
+         <button
+        class="add-cart-btn"
+        data-name="frencs fries"
+        data-price="160"
+        data-image="pexels-himanuuu-36989884.jpg">
+        🛒 Add to Cart
+    </button>
+            </div>
+            <div class="hero">
+            <img src="pexels-picsfast-8753676.jpg" alt="australian beef">
+              <h1 class="price">400sh</h1>
+            <p>australian beef</p>
+         <button
+        class="add-cart-btn"
+        data-name="australian beef"
+        data-price="400"
+        data-image="pexels-picsfast-8753676.jpg">
+        🛒 Add to Cart
+    </button>
+            </div>
+            <div class="hero">
+            <img src="pexels-samarth-2293528.jpg" alt="burger">
+             <h1 class="price">350sh</h1>
+            <p>Chicken Burger</p>
+         <button
+        class="add-cart-btn"
+        data-name="chicken burger"
+        data-price="350"
+        data-image="pexels-samarth-2293528.jpg">
+        🛒 Add to Cart
+    </button>
+            </div>
+            <div class="hero">
+            <img src="pexels-saveurssecretes-6289992.jpg" alt="rice mix">
+             <h1 class="price">450sh</h1>
+            <p>rice mix</p>
+             <button
+        class="add-cart-btn"
+        data-name="Rice Mix"
+        data-price="450"
+        data-image="pexels-saveurssecretes-6289992.jpg">
+        🛒 Add to Cart
+    </button>
+            </div>
+        </section>
+        <!-- Cart Icon -->
+<div class="cart-icon">
+
+    🛒 <span id="cart-count">0</span>
+
+</div>
+
+
+<!-- Basket -->
+<div class="cart" id="cart">
+
+    <div class="cart-header">
+
+        <h2>Shopping Basket</h2>
+
+        <button id="close-cart">&times;</button>
+
+    </div>
+
+    <div id="cart-items">
+
+        <!-- JavaScript inserts items here -->
+
+    </div>
+
+    <div class="cart-footer">
+
+        <h3>Total: Ksh <span id="cart-total">0</span></h3>
+
+        <button id="checkout-btn">
+            Checkout
+        </button>
+
+    </div>
+
+</div>
+      <footer class="footer">
+    <div class="footer-container">
+
+        <div class="footer-section">
+            <h2>ORDER FOOD</h2>
+            <p>Delicious meals served fresh every day.</p>
+        </div>
+
+        <div class="footer-section">
+            <h3>Quick Links</h3>
+            <ul>
+                <li><a href="#">Home</a></li>
+                <li><a href="#">Menu</a></li>
+                <li><a href="#">About Us</a></li>
+                <li><a href="#">Contact</a></li>
+            </ul>
+        </div>
+
+        <div class="footer-section">
+            <h3>Contact</h3>
+            <p>📍 Nairobi, Kenya</p>
+            <p>📞 +254 732784535</p>
+            <p>✉️ samuelwaswa@gmail.com</p>
+        </div>
+
+    </div>
+
+    <hr>
+
+    <p class="copyright">
+        © 2026 ORDER FOOD. All Rights Reserved.
+    </p>
+</footer>
+
+    </main>
+   
+    <script src="script.js"></script>
+    
+</body>
+</html>
