@@ -1,10 +1,9 @@
 import Order from "../models/order.model.js";
-import { stkPush } from "../services/mpesa.js";
+
 export const createOrder = async (req, res) => {
     try {
 
         const { customer, items } = req.body;
-
 
         // Check customer phone
         if (!customer || !customer.phone) {
@@ -14,16 +13,13 @@ export const createOrder = async (req, res) => {
             });
         }
 
-
-        
         // Check cart items
         if (!items || items.length === 0) {
             return res.status(400).json({
-                success:false,
-                message:"Cart is empty"
+                success: false,
+                message: "Cart is empty"
             });
         }
-
 
         let totalPrice = 0;
 
@@ -31,58 +27,28 @@ export const createOrder = async (req, res) => {
             totalPrice += item.price * item.quantity;
         });
 
-
         const order = await Order.create({
             customer,
             items,
             totalPrice,
-            paymentStatus:"Pending",
-            orderStatus:"Pending"
+            paymentStatus: "Pending",
+            orderStatus: "Pending"
         });
 
-    try {
-
-    const payment = await stkPush(
-        customer.phone,
-        totalPrice,
-        order._id.toString()
-    );
-
-
-    order.checkoutRequestID = payment.CheckoutRequestID;
-    await order.save();
-
-
-    console.log(payment);
-
-
-} catch (error) {
-
-    console.log(error.message);
-
-    return res.status(500).json({
-        success:false,
-        message:"Order created but failed to initiate payment."
-    });
-
-}
-
         res.status(201).json({
-            success:true,
-            message:"Order created successfully",
+            success: true,
+            message: "Order created successfully",
             order
         });
 
-
-    } catch(error){
-
+    } catch (error) {
         res.status(500).json({
-            success:false,
-            message:error.message
+            success: false,
+            message: error.message
         });
-
     }
 };
+
 // Get all orders
 export const getOrders = async (req, res) => {
     try {
@@ -96,12 +62,35 @@ export const getOrders = async (req, res) => {
         });
 
     } catch (error) {
-
         res.status(500).json({
             success: false,
             message: error.message
         });
+    }
+};
 
+// Get a single order (used for checking payment status)
+export const getOrderById = async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found"
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            order
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
     }
 };
 
@@ -126,6 +115,7 @@ export const updateOrder = async (req, res) => {
         });
     }
 };
+
 export const updateOrderStatus = async (req, res) => {
     try {
         const { orderStatus, paymentStatus } = req.body;
@@ -161,7 +151,6 @@ export const updateOrderStatus = async (req, res) => {
         });
     }
 };
-
 
 // Delete order
 export const deleteOrder = async (req, res) => {

@@ -15,6 +15,9 @@ const payBtn = document.getElementById("pay-btn");
 const paymentBox = document.getElementById("payment-box");
 const phoneInput = document.getElementById("phone");
 
+const paymentStatus = document.getElementById("payment-status");
+const paymentStatusText = document.getElementById("payment-status-text");
+
 
 // Load cart
 let shoppingCart = JSON.parse(localStorage.getItem("shoppingCart")) || [];
@@ -142,7 +145,7 @@ payBtn.addEventListener("click", async () => {
     const phone = phoneInput.value.trim();
 
     if (!phone) {
-        alert("Enter M-Pesa phone number");
+        alert("Please enter your M-Pesa phone number.");
         return;
     }
 
@@ -159,7 +162,7 @@ payBtn.addEventListener("click", async () => {
 
     try {
 
-        // CREATE ORDER - this already triggers the STK push on the backend
+        // STEP 1: CREATE ORDER
         const orderResponse = await fetch("http://localhost:5000/api/orders", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -173,30 +176,116 @@ payBtn.addEventListener("click", async () => {
         const orderData = await orderResponse.json();
 
         if (!orderResponse.ok) {
-            alert(orderData.message || "Order failed");
+            alert(orderData.message || "Sorry, we couldn't place your order. Please try again.");
             return;
         }
 
-        console.log("ORDER:", orderData);
+        console.log("ORDER CREATED:", orderData);
 
-        // Order created + STK push already sent by the backend.
-        alert("STK Push sent. Check your phone.");
+        // STEP 2: TRIGGER PAYMENT
+        const paymentResponse = await fetch("http://localhost:5000/api/mpesa/stkpush", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                orderId: orderData.order._id,
+                phone
+            })
+        });
 
-        shoppingCart = [];
-        saveCart();
-        displayCart();
+        const paymentData = await paymentResponse.json();
 
-        cart.classList.remove("active");
+        if (!paymentResponse.ok) {
+            alert(paymentData.message || "We couldn't start the payment. Please try again.");
+            return;
+        }
+
+        console.log("PAYMENT INITIATED:", paymentData);
+
+        // Hide the phone input, show the "waiting" screen
         paymentBox.style.display = "none";
-        checkoutBtn.style.display = "block";
-        phoneInput.value = "";
+        paymentStatus.style.display = "block";
+        paymentStatusText.textContent = "Please check your phone and enter your M-Pesa PIN to complete payment...";
+
+        // STEP 3: POLL FOR PAYMENT CONFIRMATION
+        pollPaymentStatus(orderData.order._id);
 
     } catch (error) {
         console.error(error);
-        alert("Server connection error");
+        alert("We couldn't connect to the server. Please check your internet and try again.");
     }
 
 });
+
+
+// ======================================
+// POLL BACKEND UNTIL PAYMENT IS CONFIRMED
+// ======================================
+function pollPaymentStatus(orderId) {
+
+    let attempts = 0;
+    const maxAttempts = 20;       // 20 tries
+    const intervalMs = 3000;      // every 3 seconds → ~60 seconds total
+
+    const interval = setInterval(async () => {
+
+        attempts++;
+
+        try {
+
+            const response = await fetch(`http://localhost:5000/api/orders/${orderId}`);
+            const data = await response.json();
+
+            if (!response.ok) {
+                console.error("Error checking order status:", data.message);
+                return;
+            }
+
+            const status = data.order.paymentStatus;
+
+            if (status === "Paid") {
+
+                clearInterval(interval);
+
+                paymentStatusText.textContent = "✅ Payment received! Your order is being prepared.";
+
+                shoppingCart = [];
+                saveCart();
+                displayCart();
+
+                setTimeout(() => {
+                    cart.classList.remove("active");
+                    paymentStatus.style.display = "none";
+                    checkoutBtn.style.display = "block";
+                    phoneInput.value = "";
+                }, 4000);
+
+            } else if (status === "Failed") {
+
+                clearInterval(interval);
+                paymentStatusText.textContent = "❌ Payment failed. Please try again.";
+
+                setTimeout(() => {
+                    paymentStatus.style.display = "none";
+                    paymentBox.style.display = "block";
+                }, 3000);
+
+            } else if (attempts >= maxAttempts) {
+
+                clearInterval(interval);
+                paymentStatusText.textContent = "We haven't received your payment yet. Please check your phone or try again.";
+
+                setTimeout(() => {
+                    paymentStatus.style.display = "none";
+                    paymentBox.style.display = "block";
+                }, 3000);
+            }
+
+        } catch (error) {
+            console.error("Polling error:", error);
+        }
+
+    }, intervalMs);
+}
 
 
 // Load cart on page start

@@ -61,6 +61,7 @@ export const stkPush = async (phone, amount, orderId = "Food Order") => {
     phone = formatPhone(phone);
     const token = await getAccessToken();
     const { password, timestamp } = generatePassword();
+    console.log("Callback URL:", process.env.MPESA_CALLBACK_URL);
 
     const payload = {
       BusinessShortCode: process.env.MPESA_SHORTCODE,

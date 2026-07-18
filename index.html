@@ -7,17 +7,24 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <header>
-        
-        <nav class="nav-bar">
-            <ul>     
-       <li><a href="www.google.com">home</a></li> 
-        <li><a href="www.google.com">contacts</a></li> 
-        <li><a href="www.google.com">about us</a></li> 
-       <li><a href="www.google.com">help</a></li> 
-       </ul>
-        </nav>
-    </header>
+   <header>
+    <nav class="nav-bar">
+        <ul>
+            <li><a href="#">Home</a></li>
+            <li><a href="#">Contacts</a></li>
+            <li><a href="#">About Us</a></li>
+            <li><a href="#">Help</a></li>
+
+            <!-- Add this here -->
+            <li>
+                <a href="kitchen.html" class="admin-btn">
+                    📊 Kitchen Dashboard
+                </a>
+            </li>
+        </ul>
+    </nav>
+</header>
+      
     <div id="heading">
          <h1>AFFORDABLE PRICE</h1>
          <h3>any complains about food visit cashier</h3>
@@ -184,7 +191,7 @@
     </button>
 
 
-    <!-- Hidden until Checkout is clicked -->
+ <!-- Hidden until Checkout is clicked -->
     <div id="payment-box" style="display:none;">
 
         <input 
@@ -197,6 +204,11 @@
             pay now
         </button>
 
+    </div>
+
+    <!-- Shown while waiting for payment confirmation -->
+    <div id="payment-status" style="display:none;">
+        <p id="payment-status-text">Waiting for payment confirmation...</p>
     </div>
 
 </div>

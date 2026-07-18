@@ -1,74 +1,212 @@
 import Order from "../models/order.model.js";
 import { stkPush } from "../services/mpesa.js";
 
+/**
+ * Initiate M-Pesa STK Push
+ */
 export const initiatePayment = async (req, res) => {
     try {
         const { orderId, phone } = req.body;
 
-        const order = await Order.findById(orderId);
-        if (!order) {
-            return res.status(404).json({ success: false, message: "Order not found" });
+        if (!orderId || !phone) {
+            return res.status(400).json({
+                success: false,
+                message: "Order ID and phone number are required"
+            });
         }
 
-        const response = await stkPush(phone, order.totalPrice, order._id.toString());
+        const order = await Order.findById(orderId);
 
-        order.checkoutRequestId = response.CheckoutRequestID;
-        order.merchantRequestId = response.MerchantRequestID;
-        order.paymentStatus = "Pending";
-        await order.save();
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found"
+            });
+        }
 
-        res.status(200).json({
+        const response = await stkPush(
+            phone,
+            order.totalPrice,
+            order._id.toString()
+        );
+
+      order.checkoutRequestId = response.CheckoutRequestID;
+order.merchantRequestId = response.MerchantRequestID;
+order.paymentStatus = "Pending";
+
+await order.save();
+
+console.log("===== ORDER SAVED =====");
+console.log(order);
+        return res.status(200).json({
             success: true,
-            message: "STK Push sent successfully.",
+            message: "STK Push sent successfully",
             response
         });
+  } catch (error) {
 
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        console.error("STK Push Controller Error:", error.message);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
     }
 };
 
+
+
+
+/**
+ * M-Pesa Callback
+ */
 export const mpesaCallback = async (req, res) => {
+
     try {
+
+        console.log("===== M-PESA CALLBACK RECEIVED =====");
         console.log(JSON.stringify(req.body, null, 2));
 
         const callback = req.body.Body.stkCallback;
 
-        res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+        const {
+            CheckoutRequestID,
+            ResultCode,
+            ResultDesc,
+            CallbackMetadata
+        } = callback;
 
-        const { CheckoutRequestID, ResultCode, ResultDesc, CallbackMetadata } = callback;
 
+        // Payment failed
         if (ResultCode !== 0) {
-            console.log("Payment failed or cancelled:", ResultDesc);
+
             await Order.findOneAndUpdate(
-                { checkoutRequestId: CheckoutRequestID },
-                { paymentStatus: "Failed", failureReason: ResultDesc }
+                {
+                    checkoutRequestId: CheckoutRequestID
+                },
+                {
+                    paymentStatus: "Failed",
+                    failureReason: ResultDesc
+                }
             );
-            return;
+
+            console.log("Payment failed:", ResultDesc);
+
+            return res.json({
+
+                ResultCode: 0,
+                ResultDesc: "Accepted"
+
+            });
+
         }
+
+
+
+
+        // Extract payment details
 
         const items = CallbackMetadata?.Item || [];
-        const getValue = (name) => items.find((i) => i.Name === name)?.Value;
 
-        const updatedOrder = await Order.findOneAndUpdate(
-            { checkoutRequestId: CheckoutRequestID },
-            {
-                paymentStatus: "Paid",
-                mpesaReceiptNumber: getValue("MpesaReceiptNumber"),
-                amountPaid: getValue("Amount"),
-                phoneNumber: getValue("PhoneNumber"),
-                transactionDate: getValue("TransactionDate")
-            },
-            { new: true }
+        const getValue = (name) => {
+
+            const item = items.find(
+                (item) => item.Name === name
+            );
+
+            return item ? item.Value : null;
+        };
+
+
+        const mpesaReceiptNumber = getValue(
+            "MpesaReceiptNumber"
         );
 
+        const amountPaid = getValue(
+            "Amount"
+        );
+
+        const phoneNumber = getValue(
+            "PhoneNumber"
+        );
+        const transactionDate = getValue(
+            "TransactionDate"
+        );
+
+
+
+        // Update order
+
+        const updatedOrder = await Order.findOneAndUpdate(
+
+            {
+                checkoutRequestId: CheckoutRequestID
+            },
+
+            {
+
+                paymentStatus: "Paid",
+
+                orderStatus: "Processing",
+
+                mpesaReceiptNumber,
+
+                amountPaid,
+
+                phoneNumber,
+
+                transactionDate
+
+            },
+
+        { returnDocument: "after" }
+        );
+
+
+
         if (!updatedOrder) {
-            console.log("⚠️ No matching order found for CheckoutRequestID:", CheckoutRequestID);
+
+            console.log(
+                "No order found for:",
+                CheckoutRequestID
+            );
+
         } else {
-            console.log("✅ Payment successful, order updated:", updatedOrder._id.toString());
+            console.log(
+                "Payment successful. Order updated:",
+                updatedOrder._id.toString()
+            );
+
         }
 
+
+
+        // Reply to Safaricom
+
+        return res.json({
+
+            ResultCode: 0,
+
+            ResultDesc: "Accepted"
+
+        });
+
+
     } catch (error) {
-        console.log(error.message);
+
+        console.error(
+            "M-Pesa Callback Error:",
+            error.message
+        );
+
+        return res.json({
+
+            ResultCode: 1,
+
+            ResultDesc: "Failed"
+
+        });
+
     }
+
 };
