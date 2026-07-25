@@ -1,109 +1,438 @@
-body {
-    font-family: Arial, sans-serif;
-    background: #f4f4f4;
-    margin: 0;
-    padding: 20px;
+/* =========================
+   GENERAL STYLE
+========================= */
+
+*{
+    box-sizing:border-box;
+    margin:0;
+    padding:0;
+    font-family:Arial, Helvetica, sans-serif;
 }
 
-.kitchen-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
+
+body{
+    background:#f4f6f8;
+    color:#333;
+    padding-bottom:40px;
 }
 
-.kitchen-header h1 {
-    margin: 0;
+
+
+/* =========================
+   HEADER
+========================= */
+
+.kitchen-header{
+
+    background:#1e293b;
+    color:white;
+
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+
+    padding:20px 40px;
+
+    box-shadow:0 3px 10px rgba(0,0,0,0.2);
+
 }
 
-.header-actions button {
-    margin-left: 10px;
-    padding: 10px 16px;
-    font-size: 14px;
-    cursor: pointer;
-    border: none;
-    border-radius: 6px;
-    background: #333;
-    color: white;
+
+.kitchen-header h1{
+
+    font-size:28px;
+    margin-bottom:5px;
+
 }
 
-.header-actions button:hover {
-    background: #555;
+
+.kitchen-header p{
+
+    color:#cbd5e1;
+    font-size:16px;
+
 }
 
-#orders-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
+
+
+.header-actions button{
+
+    background:#f59e0b;
+
+    border:none;
+
+    color:white;
+
+    padding:12px 18px;
+
+    margin-left:10px;
+
+    border-radius:8px;
+
+    cursor:pointer;
+
+    font-size:15px;
+
 }
 
-.order-card {
-    background: white;
-    border-radius: 8px;
-    padding: 16px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
-    border-left: 6px solid #28a745;
+
+.header-actions button:hover{
+
+    background:#d97706;
+
 }
 
-.order-card h3 {
-    margin: 0 0 8px;
+
+
+/* =========================
+   SUMMARY CARDS
+========================= */
+
+.dashboard-summary{
+
+    display:grid;
+
+    grid-template-columns:
+    repeat(auto-fit,minmax(200px,1fr));
+
+    gap:20px;
+
+    padding:30px 40px;
+
 }
 
-.order-card p {
-    margin: 4px 0;
-    font-size: 14px;
+
+
+.summary-card{
+
+    background:white;
+
+    padding:25px;
+
+    border-radius:12px;
+
+    text-align:center;
+
+    box-shadow:
+    0 4px 10px rgba(0,0,0,0.08);
+
 }
 
-.order-items {
-    margin: 10px 0;
-    padding-left: 18px;
+
+
+.summary-card h3{
+
+    color:#64748b;
+
+    margin-bottom:10px;
+
 }
 
-.order-status-select {
-    margin-top: 10px;
-    padding: 6px;
-    width: 100%;
+
+.summary-card p{
+
+    font-size:35px;
+
+    font-weight:bold;
+
+    color:#1e293b;
+
 }
 
-.order-time {
-    color: #777;
-    font-size: 12px;
+
+
+/* =========================
+   FILTER BUTTONS
+========================= */
+
+.filter-bar{
+
+    display:flex;
+
+    justify-content:center;
+
+    flex-wrap:wrap;
+
+    gap:12px;
+
+    padding:10px 40px 30px;
+
 }
 
-/* Print-friendly styling */
-@media print {
-    .kitchen-header .header-actions,
-    .order-status-select {
-        display: none;
+
+
+.filter-btn{
+
+    padding:12px 20px;
+
+    border:none;
+
+    border-radius:25px;
+
+    background:#e2e8f0;
+
+    cursor:pointer;
+
+    font-size:15px;
+
+}
+
+
+.filter-btn:hover,
+.filter-btn.active{
+
+    background:#2563eb;
+
+    color:white;
+
+}
+
+
+
+/* =========================
+   ORDERS CONTAINER
+========================= */
+
+#orders-container{
+
+    display:grid;
+
+    grid-template-columns:
+    repeat(auto-fit,minmax(320px,1fr));
+
+    gap:25px;
+
+    padding:0 40px;
+
+}
+
+
+
+/* =========================
+   ORDER CARD
+========================= */
+
+.order-card{
+
+    background:white;
+
+    padding:25px;
+
+    border-radius:15px;
+
+    position:relative;
+
+    box-shadow:
+    0 5px 15px rgba(0,0,0,0.1);
+
+    border-left:6px solid #2563eb;
+
+}
+
+
+
+.order-card h3{
+
+    color:#1e293b;
+
+    margin-bottom:10px;
+
+}
+
+
+
+.order-time{
+
+    font-size:13px;
+
+    color:#64748b;
+
+    margin-bottom:15px;
+
+}
+
+
+
+.order-card p{
+
+    margin:10px 0;
+
+}
+
+
+
+.order-items{
+
+    margin:15px 0;
+
+    padding-left:20px;
+
+}
+
+
+
+.order-items li{
+
+    margin-bottom:8px;
+
+}
+
+
+
+/* =========================
+   STATUS SELECT
+========================= */
+
+.order-status-select{
+
+    width:100%;
+
+    padding:12px;
+
+    border-radius:8px;
+
+    border:1px solid #cbd5e1;
+
+    margin-top:15px;
+
+    font-size:15px;
+
+    cursor:pointer;
+
+}
+
+
+
+.order-status-select:focus{
+
+    outline:none;
+
+    border-color:#2563eb;
+
+}
+
+
+
+/* =========================
+   NEW ORDER EFFECT
+========================= */
+
+.new-order{
+
+    animation:pulse 1s infinite;
+
+    border-left-color:#16a34a;
+
+}
+
+
+
+.new-badge{
+
+    position:absolute;
+
+    top:15px;
+
+    right:15px;
+
+    background:#16a34a;
+
+    color:white;
+
+    padding:5px 12px;
+
+    border-radius:20px;
+
+    font-size:12px;
+
+    font-weight:bold;
+
+}
+
+
+
+@keyframes pulse{
+
+
+    50%{
+
+        transform:scale(1.02);
+
     }
-    #orders-container {
-        display: block;
-    }
-    .order-card {
-        page-break-inside: avoid;
-        border: 1px solid #000;
-        margin-bottom: 12px;
-    }
-}
-.order-card.new-order {
-    border-left-color: #ffc107;
-    animation: pulse 1.5s ease-in-out 3;
-    position: relative;
+
 }
 
-.new-badge {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: #ffc107;
-    color: #000;
-    font-size: 11px;
-    font-weight: bold;
-    padding: 3px 8px;
-    border-radius: 10px;
+
+
+/* =========================
+   MOBILE RESPONSIVE
+========================= */
+
+
+@media(max-width:700px){
+
+
+    .kitchen-header{
+
+        flex-direction:column;
+
+        gap:20px;
+
+        text-align:center;
+
+    }
+
+
+
+    #orders-container{
+
+        padding:0 15px;
+
+    }
+
+
+
+    .dashboard-summary{
+
+        padding:20px 15px;
+
+    }
+
+
 }
 
-@keyframes pulse {
-    0%, 100% { box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
-    50% { box-shadow: 0 0 12px rgba(255,193,7,0.8); }
+
+
+
+/* =========================
+   PRINT MODE
+========================= */
+
+@media print{
+
+
+    .header-actions,
+    .filter-bar{
+
+        display:none;
+
+    }
+
+
+    body{
+
+        background:white;
+
+    }
+
+
+    .order-card{
+
+        box-shadow:none;
+
+        border:1px solid #ccc;
+
+    }
+
+
 }

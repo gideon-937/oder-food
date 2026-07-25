@@ -1,123 +1,427 @@
 const ordersContainer = document.getElementById("orders-container");
+
 const refreshBtn = document.getElementById("refresh-btn");
 const printBtn = document.getElementById("print-btn");
 
-// Keep track of which order IDs we've already seen
+const totalOrders = document.getElementById("total-orders");
+const paidOrdersCount = document.getElementById("paid-orders");
+const processingOrders = document.getElementById("processing-orders");
+const readyOrders = document.getElementById("ready-orders");
+
+const filterButtons = document.querySelectorAll(".filter-btn");
+
+
+let allOrders = [];
 let knownOrderIds = new Set();
 let isFirstLoad = true;
 
-// Simple alert sound (short beep, base64-encoded, no external file needed)
+
+// Notification sound
 const alertSound = new Audio(
-    "data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoAAACAgICAgICAgICAgICAgICA"
+"data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoAAACAgICAgICAgICAgICAgICA"
 );
 
-// Fetch and display orders
-async function loadOrders() {
-    try {
 
-        const response = await fetch("http://localhost:5000/api/orders");
+// Load orders
+async function loadOrders(){
+
+    try{
+
+        const response = await fetch(
+            "http://localhost:5000/api/orders"
+        );
+
+
         const data = await response.json();
 
-        if (!response.ok) {
-            ordersContainer.innerHTML = `<p>Error loading orders: ${data.message}</p>`;
+
+        if(!response.ok){
+
+            ordersContainer.innerHTML =
+            `<p>${data.message}</p>`;
+
             return;
         }
 
-        // Only show orders that have been paid
-        const paidOrders = data.orders.filter(order => order.paymentStatus === "Paid");
 
-        if (paidOrders.length === 0) {
-            ordersContainer.innerHTML = `<p id="loading-text">No paid orders yet.</p>`;
-            knownOrderIds = new Set();
-            isFirstLoad = false;
-            return;
-        }
 
-        // Detect new orders (skip alert on the very first load)
-        const newOrders = paidOrders.filter(order => !knownOrderIds.has(order._id));
+        // Supports both {orders:[]} and []
+        allOrders = data.orders || data;
 
-        if (!isFirstLoad && newOrders.length > 0) {
-            alertSound.play().catch(() => {
-                // Browsers block autoplay until the user interacts with the page once —
-                // clicking Refresh or Print once will unlock sound after that.
-            });
-        }
 
-        ordersContainer.innerHTML = "";
+        // Only paid orders go to kitchen
+        const paidOrders = allOrders.filter(
+            order => order.paymentStatus === "Paid"
+        );
 
-        paidOrders.forEach(order => {
 
-         const itemsList = (order.items || []).map(item =>
-    `<li>${item.quantity} × ${item.name}</li>`
-         ).join("");
-            const orderTime = new Date(order.createdAt).toLocaleString();
-            const isNew = newOrders.some(o => o._id === order._id) && !isFirstLoad;
+        updateDashboard(paidOrders);
 
-            const card = document.createElement("div");
-            card.className = "order-card" + (isNew ? " new-order" : "");
 
-            card.innerHTML = `
-                ${isNew ? `<span class="new-badge">NEW</span>` : ""}
-                <h3>Order #${order._id.slice(-6).toUpperCase()}</h3>
-                <p class="order-time">${orderTime}</p>
-               <p><strong>Phone:</strong> ${order.customer?.phone || "Unknown"}</p>
-                <ul class="order-items">${itemsList}</ul>
-                <p><strong>Total:</strong> Ksh ${order.totalPrice}</p>
-                <p><strong>Status:</strong> ${order.orderStatus}</p>
+        detectNewOrders(paidOrders);
 
-                <select class="order-status-select" data-id="${order._id}">
-                    <option value="Pending" ${order.orderStatus === "Pending" ? "selected" : ""}>Pending</option>
-                    <option value="Processing" ${order.orderStatus === "Processing" ? "selected" : ""}>Processing</option>
-                    <option value="Ready" ${order.orderStatus === "Ready" ? "selected" : ""}>Ready</option>
-                    <option value="Completed" ${order.orderStatus === "Completed" ? "selected" : ""}>Completed</option>
-                </select>
-            `;
 
-            ordersContainer.appendChild(card);
-        });
+        displayOrders(paidOrders);
 
-        // Wire up status dropdowns
-        document.querySelectorAll(".order-status-select").forEach(select => {
-            select.addEventListener("change", async (e) => {
-                const orderId = e.target.dataset.id;
-                const newStatus = e.target.value;
-                await updateOrderStatus(orderId, newStatus);
-            });
-        });
 
-        // Update known order IDs
-        knownOrderIds = new Set(paidOrders.map(order => order._id));
-        isFirstLoad = false;
 
-    } catch (error) {
+    }catch(error){
+
         console.error(error);
-        ordersContainer.innerHTML = `<p>Could not connect to server.</p>`;
+
+        ordersContainer.innerHTML =
+        "<p>Could not connect to server.</p>";
     }
+
 }
 
-// Update order status when staff changes the dropdown
-async function updateOrderStatus(orderId, newStatus) {
-    try {
-        await fetch(`http://localhost:5000/api/orders/${orderId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orderStatus: newStatus })
+
+
+// Update dashboard numbers
+function updateDashboard(orders){
+
+
+    totalOrders.innerText = orders.length;
+
+
+    paidOrdersCount.innerText =
+    orders.filter(
+        order => order.paymentStatus === "Paid"
+    ).length;
+
+
+
+    processingOrders.innerText =
+    orders.filter(
+        order => order.orderStatus === "Processing"
+    ).length;
+
+
+
+    readyOrders.innerText =
+    orders.filter(
+        order => order.orderStatus === "Ready"
+    ).length;
+
+}
+
+
+
+// Detect new paid orders
+function detectNewOrders(orders){
+
+
+    const newOrders = orders.filter(
+        order => !knownOrderIds.has(order._id)
+    );
+
+
+    if(!isFirstLoad && newOrders.length > 0){
+
+        alertSound.play().catch(()=>{});
+
+    }
+
+
+    knownOrderIds = new Set(
+        orders.map(order => order._id)
+    );
+
+
+    isFirstLoad = false;
+
+}
+
+
+
+
+// Display orders
+function displayOrders(orders){
+
+
+    if(orders.length === 0){
+
+        ordersContainer.innerHTML =
+        "<p>No paid orders yet.</p>";
+
+        return;
+
+    }
+
+
+
+    ordersContainer.innerHTML = "";
+
+
+
+    orders.forEach(order => {
+
+
+        const itemsList =
+        (order.items || [])
+        .map(item =>
+            `<li>
+            ${item.quantity} × ${item.name}
+            </li>`
+        )
+        .join("");
+
+
+
+        const orderTime =
+        new Date(order.createdAt)
+        .toLocaleString();
+
+
+
+        const card =
+        document.createElement("div");
+
+
+        card.className="order-card";
+
+
+
+        card.innerHTML = `
+
+
+        <h3>
+        Order #${order._id.slice(-6).toUpperCase()}
+        </h3>
+
+
+        <p class="order-time">
+        ${orderTime}
+        </p>
+
+
+
+        <p>
+        <strong>Phone:</strong>
+        ${order.customer?.phone || "Unknown"}
+        </p>
+
+
+
+        <h4>Items</h4>
+
+        <ul class="order-items">
+        ${itemsList}
+        </ul>
+
+
+
+        <p>
+        <strong>Total:</strong>
+        Ksh ${order.totalPrice}
+        </p>
+
+
+
+        <p>
+        <strong>Payment:</strong>
+        ${order.paymentStatus}
+        </p>
+
+
+
+        <p>
+        <strong>Status:</strong>
+        ${order.orderStatus}
+        </p>
+
+
+
+        <select 
+        class="order-status-select"
+        data-id="${order._id}">
+
+
+        <option value="Pending"
+        ${order.orderStatus==="Pending"?"selected":""}>
+        Pending
+        </option>
+
+
+
+        <option value="Processing"
+        ${order.orderStatus==="Processing"?"selected":""}>
+        Processing
+        </option>
+
+
+
+        <option value="Ready"
+        ${order.orderStatus==="Ready"?"selected":""}>
+        Ready
+        </option>
+
+
+
+        <option value="Delivered"
+        ${order.orderStatus==="Delivered"?"selected":""}>
+        Delivered
+        </option>
+
+
+        </select>
+
+
+        `;
+
+
+        ordersContainer.appendChild(card);
+
+
+    });
+
+
+
+    // Status change listener
+    document.querySelectorAll(".order-status-select")
+    .forEach(select=>{
+
+
+        select.addEventListener(
+            "change",
+            (event)=>{
+
+
+                updateOrderStatus(
+                    event.target.dataset.id,
+                    event.target.value
+                );
+
+
+            }
+        );
+
+
+    });
+
+
+
+}
+
+
+
+// Update order status
+async function updateOrderStatus(id,status){
+
+
+    try{
+
+
+        await fetch(
+        `http://localhost:5000/api/orders/${id}`,
+        {
+
+            method:"PUT",
+
+            headers:{
+                "Content-Type":"application/json"
+            },
+
+            body:JSON.stringify({
+
+                orderStatus:status
+
+            })
+
         });
-    } catch (error) {
-        console.error("Failed to update order status:", error);
+
+
+
+        loadOrders();
+
+
+
+    }catch(error){
+
+        console.error(error);
+
     }
+
 }
 
-// Manual refresh button
-refreshBtn.addEventListener("click", loadOrders);
 
-// Print button
-printBtn.addEventListener("click", () => {
-    window.print();
+
+
+// Filter buttons
+filterButtons.forEach(button=>{
+
+
+    button.addEventListener("click",()=>{
+
+
+        filterButtons.forEach(btn=>
+            btn.classList.remove("active")
+        );
+
+
+        button.classList.add("active");
+
+
+
+        const filter =
+        button.dataset.filter;
+
+
+
+        const paidOrders =
+        allOrders.filter(
+        order=>order.paymentStatus==="Paid"
+        );
+
+
+
+        if(filter==="all"){
+
+            displayOrders(paidOrders);
+
+        }
+        else{
+
+            displayOrders(
+            paidOrders.filter(
+            order=>order.orderStatus===filter
+            )
+            );
+
+        }
+
+
+
+    });
+
+
+
 });
 
-// Auto-refresh every 10 seconds
-setInterval(loadOrders, 10000);
 
-// Initial load
+
+
+
+refreshBtn.addEventListener(
+"click",
+loadOrders
+);
+
+
+
+printBtn.addEventListener(
+"click",
+()=>window.print()
+);
+
+
+
+// Auto refresh
+setInterval(
+loadOrders,
+10000
+);
+
+
+// First load
 loadOrders();

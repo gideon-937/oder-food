@@ -11,3 +11,9 @@ connectDB();
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+import mongoose from "mongoose";
+
+mongoose.connection.once("open", () => {
+    console.log("Connected database:", mongoose.connection.name);
+    console.log("Host:", mongoose.connection.host);
+});

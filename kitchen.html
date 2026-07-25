@@ -8,18 +8,75 @@
 </head>
 <body>
 
+    <!-- Header -->
     <header class="kitchen-header">
-        <h1>🍳 Kitchen Orders</h1>
+        <div>
+            <h1>🍳 Gideon 5 Star Hotel</h1>
+            <p>Kitchen Dashboard</p>
+        </div>
+
         <div class="header-actions">
             <button id="refresh-btn">🔄 Refresh</button>
             <button id="print-btn">🖨️ Print</button>
         </div>
     </header>
 
+    <!-- Dashboard Summary -->
+    <section class="dashboard-summary">
+
+        <div class="summary-card">
+            <h3>Total Orders</h3>
+            <p id="total-orders">0</p>
+        </div>
+
+        <div class="summary-card">
+            <h3>Paid Orders</h3>
+            <p id="paid-orders">0</p>
+        </div>
+
+        <div class="summary-card">
+            <h3>Preparing</h3>
+            <p id="processing-orders">0</p>
+        </div>
+
+        <div class="summary-card">
+            <h3>Ready</h3>
+            <p id="ready-orders">0</p>
+        </div>
+
+    </section>
+
+    <!-- Filter Buttons -->
+    <section class="filter-bar">
+
+        <button class="filter-btn active" data-filter="all">
+            All Orders
+        </button>
+
+        <button class="filter-btn" data-filter="Paid">
+            Paid
+        </button>
+
+        <button class="filter-btn" data-filter="Processing">
+            Processing
+        </button>
+
+        <button class="filter-btn" data-filter="Ready">
+            Ready
+        </button>
+
+        <button class="filter-btn" data-filter="Delivered">
+            Delivered
+        </button>
+
+    </section>
+
+    <!-- Orders -->
     <main id="orders-container">
         <p id="loading-text">Loading orders...</p>
     </main>
 
     <script src="kitchen.js"></script>
+
 </body>
 </html>
