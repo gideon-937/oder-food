@@ -22,8 +22,13 @@ const foodSchema = new mongoose.Schema({
     },
 
     category:{
-        type:String
-    }
+    type:String
+},
+
+available:{
+    type:Boolean,
+    default:true
+}
 
 },{timestamps:true});
 

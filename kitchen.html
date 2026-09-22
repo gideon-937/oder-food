@@ -1,82 +1,435 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Kitchen Orders - Gideon 5 Star Hotel</title>
+
     <link rel="stylesheet" href="kitchen.css">
 </head>
+
 <body>
 
-    <!-- Header -->
+    <!-- ====================================== -->
+    <!-- HEADER -->
+    <!-- ====================================== -->
+
     <header class="kitchen-header">
+
         <div>
             <h1>🍳 Gideon 5 Star Hotel</h1>
             <p>Kitchen Dashboard</p>
         </div>
 
         <div class="header-actions">
-            <button id="refresh-btn">🔄 Refresh</button>
-            <button id="print-btn">🖨️ Print</button>
+
+            <button id="refresh-btn">
+                🔄 Refresh
+            </button>
+
+            <button id="print-btn">
+                🖨️ Print
+            </button>
+
+            <button id="logout-btn">
+                🚪 Logout
+            </button>
+
         </div>
+
     </header>
 
-    <!-- Dashboard Summary -->
+
+    <!-- ====================================== -->
+    <!-- DASHBOARD SUMMARY -->
+    <!-- ====================================== -->
+
     <section class="dashboard-summary">
 
         <div class="summary-card">
+
             <h3>Total Orders</h3>
-            <p id="total-orders">0</p>
+
+            <p id="total-orders">
+                0
+            </p>
+
         </div>
 
+
         <div class="summary-card">
+
             <h3>Paid Orders</h3>
-            <p id="paid-orders">0</p>
+
+            <p id="paid-orders">
+                0
+            </p>
+
         </div>
 
+
         <div class="summary-card">
+
             <h3>Preparing</h3>
-            <p id="processing-orders">0</p>
+
+            <p id="processing-orders">
+                0
+            </p>
+
         </div>
 
+
         <div class="summary-card">
+
             <h3>Ready</h3>
-            <p id="ready-orders">0</p>
+
+            <p id="ready-orders">
+                0
+            </p>
+
         </div>
 
     </section>
 
-    <!-- Filter Buttons -->
+
+    <!-- ====================================== -->
+    <!-- ORDER FILTER -->
+    <!-- ====================================== -->
+
     <section class="filter-bar">
 
-        <button class="filter-btn active" data-filter="all">
+        <button
+            class="filter-btn active"
+            data-filter="all"
+        >
             All Orders
         </button>
 
-        <button class="filter-btn" data-filter="Paid">
+
+        <button
+            class="filter-btn"
+            data-filter="Paid"
+        >
             Paid
         </button>
 
-        <button class="filter-btn" data-filter="Processing">
+
+        <button
+            class="filter-btn"
+            data-filter="Processing"
+        >
             Processing
         </button>
 
-        <button class="filter-btn" data-filter="Ready">
+
+        <button
+            class="filter-btn"
+            data-filter="Ready"
+        >
             Ready
         </button>
 
-        <button class="filter-btn" data-filter="Delivered">
+
+        <button
+            class="filter-btn"
+            data-filter="Delivered"
+        >
             Delivered
         </button>
 
     </section>
 
-    <!-- Orders -->
-    <main id="orders-container">
-        <p id="loading-text">Loading orders...</p>
-    </main>
+
+    <!-- ====================================== -->
+    <!-- FOOD MANAGEMENT -->
+    <!-- ====================================== -->
+
+    <section class="food-management">
+
+
+        <!-- FOOD MANAGEMENT HEADER -->
+
+        <div class="food-management-header">
+
+            <div>
+
+                <h2>
+                    🍔 Food Management
+                </h2>
+
+                <p>
+                    Add and manage food available on the website.
+                </p>
+
+            </div>
+
+
+            <button id="show-food-form-btn">
+                ➕ Add New Food
+            </button>
+
+        </div>
+
+
+        <!-- ====================================== -->
+        <!-- FOOD FORM -->
+        <!-- ====================================== -->
+
+        <div
+            id="food-form-container"
+            class="food-form-container"
+            style="display: none;"
+        >
+
+            <h3 id="food-form-title">
+                Add New Food
+            </h3>
+
+
+            <form id="food-form">
+
+
+                <!-- FOOD NAME -->
+
+                <div class="form-group">
+
+                    <label for="food-name">
+                        Food Name
+                    </label>
+
+                    <input
+                        type="text"
+                        id="food-name"
+                        placeholder="e.g. Chicken Burger"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- DESCRIPTION -->
+
+                <div class="form-group">
+
+                    <label for="food-description">
+                        Description
+                    </label>
+
+                    <textarea
+                        id="food-description"
+                        placeholder="Describe the food"
+                        required
+                    ></textarea>
+
+                </div>
+
+
+                <!-- PRICE -->
+
+                <div class="form-group">
+
+                    <label for="food-price">
+                        Price (KSh)
+                    </label>
+
+                    <input
+                        type="number"
+                        id="food-price"
+                        placeholder="350"
+                        min="0"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- CATEGORY -->
+
+                <div class="form-group">
+
+                    <label for="food-category">
+                        Category
+                    </label>
+
+
+                    <select
+                        id="food-category"
+                        required
+                    >
+
+                        <option value="">
+                            Select Category
+                        </option>
+
+
+                        <option value="Burger">
+                            Burger
+                        </option>
+
+
+                        <option value="Pizza">
+                            Pizza
+                        </option>
+
+
+                        <option value="Chicken">
+                            Chicken
+                        </option>
+
+
+                        <option value="Beef">
+                            Beef
+                        </option>
+
+
+                        <option value="Fish">
+                            Fish
+                        </option>
+
+
+                        <option value="Drinks">
+                            Drinks
+                        </option>
+
+
+                        <option value="Other">
+                            Other
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <!-- ====================================== -->
+                <!-- IMAGE UPLOAD -->
+                <!-- ====================================== -->
+
+                <div class="form-group">
+
+                    <label for="food-image">
+                        Food Image
+                    </label>
+
+
+                    <input
+                        type="file"
+                        id="food-image"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                    >
+
+
+                    <small>
+                        Choose a JPG, PNG or WEBP image.
+                        Maximum size: 5 MB.
+                    </small>
+
+                </div>
+
+
+                <!-- ====================================== -->
+                <!-- AVAILABILITY -->
+                <!-- ====================================== -->
+
+                <div class="form-group checkbox-group">
+
+                    <label>
+
+                        <input
+                            type="checkbox"
+                            id="food-available"
+                            checked
+                        >
+
+                        Food is available
+
+                    </label>
+
+                </div>
+
+
+                <!-- ====================================== -->
+                <!-- FORM BUTTONS -->
+                <!-- ====================================== -->
+
+                <div class="food-form-buttons">
+
+                    <button
+                        type="submit"
+                        id="save-food-btn"
+                    >
+                        💾 Save Food
+                    </button>
+
+
+                    <button
+                        type="button"
+                        id="cancel-food-btn"
+                    >
+                        Cancel
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+
+        <!-- ====================================== -->
+        <!-- FOOD LIST -->
+        <!-- ====================================== -->
+
+        <div class="food-list-section">
+
+            <h3>
+                Current Food
+            </h3>
+
+
+            <div id="food-container">
+
+                <p id="food-loading">
+                    Loading food...
+                </p>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- ====================================== -->
+    <!-- CUSTOMER ORDERS -->
+    <!-- ====================================== -->
+
+    <section class="orders-section">
+
+        <h2>
+            📋 Customer Orders
+        </h2>
+
+
+        <main id="orders-container">
+
+            <p id="loading-text">
+                Loading orders...
+            </p>
+
+        </main>
+
+    </section>
+
+
+    <!-- ====================================== -->
+    <!-- JAVASCRIPT -->
+    <!-- ====================================== -->
 
     <script src="kitchen.js"></script>
 
 </body>
 </html>
+

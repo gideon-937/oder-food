@@ -4,17 +4,46 @@ import {
     createOrder,
     getOrders,
     getOrderById,
+    getPaymentStatus,
     updateOrderStatus
 } from "../controllers/order.controller.js";
 
+import {
+    protect,
+    kitchenOnly
+} from "../middleware/auth.middleware.js";
+
 const router = express.Router();
 
+
+// ======================================
+// CUSTOMER CREATES ORDER
+// ======================================
 router.post("/", createOrder);
 
-router.get("/", getOrders);
 
-router.get("/:id", getOrderById);
+// ======================================
+// KITCHEN STAFF GET ALL ORDERS
+// ======================================
+router.get("/", protect, kitchenOnly, getOrders);
 
-router.put("/:id", updateOrderStatus);
+
+// ======================================
+// CUSTOMER CHECKS PAYMENT STATUS
+// ======================================
+router.get("/payment-status/:id", getPaymentStatus);
+
+
+// ======================================
+// KITCHEN STAFF GET SINGLE ORDER
+// ======================================
+router.get("/:id", protect, kitchenOnly, getOrderById);
+
+
+// ======================================
+// KITCHEN STAFF UPDATE ORDER STATUS
+// ======================================
+router.put("/:id", protect, kitchenOnly, updateOrderStatus);
+
 
 export default router;

@@ -1,25 +1,30 @@
 import express from "express";
 
 import {
-
     addFood,
     getFoods,
     getFood,
     updateFood,
     deleteFood
-
 } from "../controllers/food.controller.js";
+
+import {
+    protect,
+    adminOnly
+} from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-router.post("/", addFood);
-
+// Public routes
 router.get("/", getFoods);
 
 router.get("/:id", getFood);
 
-router.put("/:id", updateFood);
+// Admin-only routes
+router.post("/", protect, adminOnly, addFood);
 
-router.delete("/:id", deleteFood);
+router.put("/:id", protect, adminOnly, updateFood);
+
+router.delete("/:id", protect, adminOnly, deleteFood);
 
 export default router;
