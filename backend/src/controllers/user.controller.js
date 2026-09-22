@@ -1,7 +1,9 @@
+
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
+console.log("🔥 CORRECT USER CONTROLLER LOADED");
 
 // ======================================
 // REGISTER USER
@@ -9,79 +11,38 @@ import jwt from "jsonwebtoken";
 
 export const registerUser = async (req, res) => {
     try {
-
         const { name, email, password } = req.body;
 
-        // Validate required fields
         if (!name || !email || !password) {
             return res.status(400).json({
+                success: false,
                 message: "Name, email and password are required"
             });
         }
 
-        // Validate name
-        if (
-            typeof name !== "string" ||
-            name.trim().length < 2 ||
-            name.trim().length > 100
-        ) {
-            return res.status(400).json({
-                message: "Name must be between 2 and 100 characters"
-            });
-        }
-
-        // Normalize email
         const normalizedEmail = email.trim().toLowerCase();
 
-        // Basic email validation
-        const emailRegex =
-            /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-        if (!emailRegex.test(normalizedEmail)) {
-            return res.status(400).json({
-                message: "Invalid email address"
-            });
-        }
-
-        // Password validation
-        if (
-            typeof password !== "string" ||
-            password.length < 8 ||
-            password.length > 128
-        ) {
-            return res.status(400).json({
-                message: "Password must be between 8 and 128 characters"
-            });
-        }
-
-        // Check existing user
         const userExists = await User.findOne({
             email: normalizedEmail
         });
 
         if (userExists) {
             return res.status(400).json({
+                success: false,
                 message: "User already exists"
             });
         }
 
-        // Hash password
-        const hashedPassword = await bcrypt.hash(
-            password,
-            12
-        );
+        const hashedPassword = await bcrypt.hash(password, 10);
 
-        // IMPORTANT:
-        // Do not accept role from req.body.
-        // New users are always customers.
         const user = await User.create({
             name: name.trim(),
             email: normalizedEmail,
-            password: hashedPassword,
-            role: "customer"
+            password: hashedPassword
         });
 
         return res.status(201).json({
+            success: true,
             message: "Registration successful",
             user: {
                 id: user._id,
@@ -92,10 +53,10 @@ export const registerUser = async (req, res) => {
         });
 
     } catch (error) {
-
         console.error("REGISTER ERROR:", error);
 
         return res.status(500).json({
+            success: false,
             message: "Registration failed"
         });
     }
@@ -109,48 +70,116 @@ export const registerUser = async (req, res) => {
 export const loginUser = async (req, res) => {
     try {
 
-        const { email, password } = req.body;
+        console.log("=================================");
+        console.log("LOGIN REQUEST");
 
-        if (!email || !password) {
+        const { email, password } = req.body || {};
+
+        console.log("Email:", email);
+
+        console.log(
+            "Password received:",
+            typeof password === "string" && password.length > 0
+                ? "YES"
+                : "NO"
+        );
+
+        // ======================================
+        // VALIDATE INPUT
+        // ======================================
+
+        if (
+            typeof email !== "string" ||
+            !email.trim() ||
+            typeof password !== "string" ||
+            !password
+        ) {
             return res.status(400).json({
+                success: false,
                 message: "Email and password are required"
             });
         }
 
-        const normalizedEmail =
-            email.trim().toLowerCase();
+        const normalizedEmail = email.trim().toLowerCase();
+
+        // ======================================
+        // FIND USER
+        // ======================================
 
         const user = await User.findOne({
             email: normalizedEmail
-        });
+        }).select("+password");
 
-        // Don't reveal whether the email exists
+        console.log("User found:", !!user);
+
         if (!user) {
-            return res.status(401).json({
-                message: "Invalid email or password"
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
             });
         }
 
-        const passwordMatch =
-            await bcrypt.compare(
-                password,
-                user.password
-            );
+        // ======================================
+        // CHECK USER DATA
+        // ======================================
+
+        console.log("User email:", user.email);
+        console.log("User role:", user.role);
+        console.log("Password exists:", !!user.password);
+        console.log(
+            "Password length:",
+            user.password ? user.password.length : 0
+        );
+
+        if (
+            typeof user.password !== "string" ||
+            !user.password.trim()
+        ) {
+            console.error("ERROR: USER PASSWORD IS MISSING");
+
+            return res.status(500).json({
+                success: false,
+                message: "User password is missing"
+            });
+        }
+
+        // ======================================
+        // COMPARE PASSWORD
+        // ======================================
+
+        const passwordMatch = await bcrypt.compare(
+            password,
+            user.password
+        );
+
+        console.log("Password match:", passwordMatch);
 
         if (!passwordMatch) {
             return res.status(401).json({
-                message: "Invalid email or password"
+                success: false,
+                message: "Wrong password"
             });
         }
 
-        // Make sure JWT secret exists
-        if (!process.env.JWT_SECRET) {
-            console.error("JWT_SECRET is missing");
+        // ======================================
+        // CHECK JWT SECRET
+        // ======================================
+
+        if (
+            typeof process.env.JWT_SECRET !== "string" ||
+            !process.env.JWT_SECRET.trim()
+        ) {
+            console.error("ERROR: JWT_SECRET is missing");
 
             return res.status(500).json({
-                message: "Server configuration error"
+                success: false,
+                message: "JWT configuration error"
             });
         }
+
+        // ======================================
+        // CREATE JWT
+        // ======================================
 
         const token = jwt.sign(
             {
@@ -163,11 +192,18 @@ export const loginUser = async (req, res) => {
             }
         );
 
-        return res.json({
+        // ======================================
+        // LOGIN SUCCESS
+        // ======================================
+
+        console.log("LOGIN SUCCESSFUL");
+        console.log("Role:", user.role);
+        console.log("=================================");
+
+        return res.status(200).json({
+            success: true,
             message: "Login successful",
-
             token,
-
             user: {
                 id: user._id,
                 name: user.name,
@@ -181,7 +217,9 @@ export const loginUser = async (req, res) => {
         console.error("LOGIN ERROR:", error);
 
         return res.status(500).json({
+            success: false,
             message: "Login failed"
         });
     }
 };
+
