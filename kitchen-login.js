@@ -45,7 +45,7 @@ loginForm.addEventListener("submit", async (event) => {
         localStorage.setItem("kitchenToken", data.token);
 
         // Open existing kitchen dashboard
-       window.location.href = "http://127.0.0.1:5500/kitchen.html";
+       window.location.href = "https://oder-food-3.onrender.com/kitchen.html";
 
     } catch (error) {
 
