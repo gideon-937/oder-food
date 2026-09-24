@@ -2,8 +2,7 @@
 // ======================================
 // API CONFIGURATION
 // ======================================
-
-const API_URL = "http://localhost:5000";
+const API_URL = "https://oder-food-2.onrender.com";
 
 console.log("MAIN SCRIPT.JS IS WORKING");
 

@@ -14,8 +14,7 @@ if (!kitchenToken) {
 // ======================================================
 // API URL
 // ======================================================
-
-const API_URL = "http://localhost:5000";
+const API_URL = "https://oder-food-2.onrender.com";
 
 
 // ======================================================
@@ -409,6 +408,7 @@ async function updateOrderStatus(
 
             window.location.href =
                 "https://oder-food-3.onrender.com/kitchen-login.html";
+               
 
             return;
         }
@@ -1203,7 +1203,7 @@ foodForm.addEventListener(
                 );
 
                 window.location.href =
-                    "https://oder-food-3.onrender.com/kitchen-login.html";
+                        "https://oder-food-3.onrender.com/kitchen-login.html";
 
                 return;
             }
@@ -1453,7 +1453,7 @@ async function toggleFoodAvailability(
             );
 
             window.location.href =
-                "https://oder-food-3.onrender.com/kitchen-login.html";
+                    "https://oder-food-3.onrender.com/kitchen-login.html";
 
             return;
         }
@@ -1508,7 +1508,7 @@ async function deleteFood(id) {
         alert("Please login first.");
 
         window.location.href =
-            "https://oder-food-3.onrender.com/kitchen-login.html";
+                "https://oder-food-3.onrender.com/kitchen-login.html";
 
         return;
     }
@@ -1550,7 +1550,7 @@ async function deleteFood(id) {
             );
 
             window.location.href =
-                "https://oder-food-3.onrender.com/kitchen-login.html";
+                   "https://oder-food-3.onrender.com/kitchen-login.html";
 
             return;
         }
@@ -1628,7 +1628,7 @@ logoutBtn.addEventListener(
 
 
         window.location.href =
-            "https://oder-food-3.onrender.com/kitchen-login.html";
+             "https://oder-food-3.onrender.com/kitchen-login.html";
 
     }
 );
@@ -1641,5 +1641,4 @@ logoutBtn.addEventListener(
 loadOrders();
 
 loadFoods();
-
 
