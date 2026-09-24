@@ -1,19 +1,74 @@
+
+import mongoose from "mongoose";
 import Order from "../models/order.model.js";
 import { stkPush } from "../services/mpesa.js";
+
+/**
+ * Normalize Kenyan phone numbers for comparison
+ */
+const normalizePhone = (phone) => {
+    if (!phone) return null;
+
+    const value = String(phone).replace(/\s+/g, "");
+
+    if (value.startsWith("+254")) {
+        return value.substring(1);
+    }
+
+    if (value.startsWith("07") || value.startsWith("01")) {
+        return `254${value.substring(1)}`;
+    }
+
+    return value;
+};
+
 
 /**
  * Initiate M-Pesa STK Push
  */
 export const initiatePayment = async (req, res) => {
     try {
+
         const { orderId, phone } = req.body;
 
-        if (!orderId || !phone) {
+        // --------------------------------------
+        // Validate input
+        // --------------------------------------
+
+        if (
+            !orderId ||
+            typeof orderId !== "string" ||
+            !mongoose.isValidObjectId(orderId)
+        ) {
             return res.status(400).json({
                 success: false,
-                message: "Order ID and phone number are required"
+                message: "Invalid order ID"
             });
         }
+
+        if (
+            !phone ||
+            typeof phone !== "string"
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid phone number is required"
+            });
+        }
+
+        const normalizedPhone = normalizePhone(phone);
+
+        if (!/^254(7|1)\d{8}$/.test(normalizedPhone)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Kenyan phone number"
+            });
+        }
+
+
+        // --------------------------------------
+        // Find order
+        // --------------------------------------
 
         const order = await Order.findById(orderId);
 
@@ -24,37 +79,145 @@ export const initiatePayment = async (req, res) => {
             });
         }
 
+
+        // --------------------------------------
+        // Prevent paying an already paid order
+        // --------------------------------------
+
+        if (order.paymentStatus === "Paid") {
+            return res.status(400).json({
+                success: false,
+                message: "This order has already been paid"
+            });
+        }
+
+
+        // --------------------------------------
+        // Prevent multiple active STK requests
+        // --------------------------------------
+
+        if (
+            order.checkoutRequestId &&
+            order.paymentStatus === "Pending"
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Payment is already being processed"
+            });
+        }
+
+
+        // --------------------------------------
+        // Verify order phone
+        // --------------------------------------
+
+        const orderPhone = normalizePhone(order.customer?.phone);
+
+        if (
+            orderPhone &&
+            orderPhone !== normalizedPhone
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Phone number does not match the order"
+            });
+        }
+
+
+        // --------------------------------------
+        // Validate order total
+        // --------------------------------------
+
+        const totalAmount = Number(order.totalPrice);
+
+        if (
+            !Number.isFinite(totalAmount) ||
+            totalAmount <= 0
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid order amount"
+            });
+        }
+
+
+        // --------------------------------------
+        // Send STK Push
+        // --------------------------------------
+
         const response = await stkPush(
-            phone,
-            order.totalPrice,
+            normalizedPhone,
+            totalAmount,
             order._id.toString()
         );
 
-      order.checkoutRequestId = response.CheckoutRequestID;
-order.merchantRequestId = response.MerchantRequestID;
-order.paymentStatus = "Pending";
 
-await order.save();
+        // --------------------------------------
+        // Validate M-Pesa response
+        // --------------------------------------
 
-console.log("===== ORDER SAVED =====");
-console.log(order);
+        if (
+            !response ||
+            !response.CheckoutRequestID ||
+            !response.MerchantRequestID
+        ) {
+            console.error(
+                "Invalid STK response:",
+                response
+            );
+
+            return res.status(502).json({
+                success: false,
+                message: "Unable to initiate M-Pesa payment"
+            });
+        }
+
+
+        // --------------------------------------
+        // Save payment request
+        // --------------------------------------
+
+        order.checkoutRequestId =
+            response.CheckoutRequestID;
+
+        order.merchantRequestId =
+            response.MerchantRequestID;
+
+        order.paymentStatus = "Pending";
+
+        await order.save();
+
+
+        console.log(
+            "M-Pesa STK initiated for order:",
+            order._id.toString()
+        );
+
+
+        // --------------------------------------
+        // Return only what frontend needs
+        // --------------------------------------
+
         return res.status(200).json({
             success: true,
             message: "STK Push sent successfully",
-            response
+            checkoutRequestId:
+                response.CheckoutRequestID
         });
-  } catch (error) {
 
-        console.error("STK Push Controller Error:", error.message);
+    } catch (error) {
+
+        console.error(
+            "STK Push Controller Error:",
+            error.message
+        );
 
         return res.status(500).json({
             success: false,
-            message: error.message
+            message: "Unable to initiate payment"
         });
     }
 };
-
-
 
 
 /**
@@ -64,10 +227,30 @@ export const mpesaCallback = async (req, res) => {
 
     try {
 
-        console.log("===== M-PESA CALLBACK RECEIVED =====");
-        console.log(JSON.stringify(req.body, null, 2));
+        console.log(
+            "===== M-PESA CALLBACK RECEIVED ====="
+        );
 
-        const callback = req.body.Body.stkCallback;
+
+        // --------------------------------------
+        // Validate callback structure
+        // --------------------------------------
+
+        const callback =
+            req.body?.Body?.stkCallback;
+
+        if (!callback) {
+
+            console.error(
+                "Invalid M-Pesa callback structure"
+            );
+
+            return res.json({
+                ResultCode: 1,
+                ResultDesc: "Invalid callback"
+            });
+        }
+
 
         const {
             CheckoutRequestID,
@@ -77,118 +260,252 @@ export const mpesaCallback = async (req, res) => {
         } = callback;
 
 
-        // Payment failed
-        if (ResultCode !== 0) {
+        if (!CheckoutRequestID) {
 
-            await Order.findOneAndUpdate(
-                {
-                    checkoutRequestId: CheckoutRequestID
-                },
-                {
-                    paymentStatus: "Failed",
-                    failureReason: ResultDesc
-                }
+            console.error(
+                "Missing CheckoutRequestID"
             );
 
-            console.log("Payment failed:", ResultDesc);
-
             return res.json({
-
-                ResultCode: 0,
-                ResultDesc: "Accepted"
-
+                ResultCode: 1,
+                ResultDesc: "Missing CheckoutRequestID"
             });
-
         }
 
 
+        // --------------------------------------
+        // Find the order
+        // --------------------------------------
+
+        const order = await Order.findOne({
+            checkoutRequestId: CheckoutRequestID
+        });
 
 
-        // Extract payment details
+        if (!order) {
 
-        const items = CallbackMetadata?.Item || [];
+            console.error(
+                "No order found for CheckoutRequestID:",
+                CheckoutRequestID
+            );
+
+            // Acknowledge callback so it is not
+            // repeatedly retried.
+            return res.json({
+                ResultCode: 0,
+                ResultDesc: "Accepted"
+            });
+        }
+
+
+        // --------------------------------------
+        // Ignore duplicate callback
+        // --------------------------------------
+
+        if (order.paymentStatus === "Paid") {
+
+            console.log(
+                "Duplicate payment callback ignored:",
+                order._id.toString()
+            );
+
+            return res.json({
+                ResultCode: 0,
+                ResultDesc: "Accepted"
+            });
+        }
+
+
+        // --------------------------------------
+        // Payment failed
+        // --------------------------------------
+
+        if (Number(ResultCode) !== 0) {
+
+            order.paymentStatus = "Failed";
+
+            order.failureReason =
+                ResultDesc || "M-Pesa payment failed";
+
+            await order.save();
+
+            console.log(
+                "Payment failed:",
+                ResultDesc
+            );
+
+            return res.json({
+                ResultCode: 0,
+                ResultDesc: "Accepted"
+            });
+        }
+
+
+        // --------------------------------------
+        // Extract callback metadata
+        // --------------------------------------
+
+        const items =
+            CallbackMetadata?.Item || [];
 
         const getValue = (name) => {
 
             const item = items.find(
-                (item) => item.Name === name
+                (entry) =>
+                    entry?.Name === name
             );
 
-            return item ? item.Value : null;
+            return item?.Value ?? null;
         };
 
 
-        const mpesaReceiptNumber = getValue(
-            "MpesaReceiptNumber"
-        );
+        const mpesaReceiptNumber =
+            getValue("MpesaReceiptNumber");
 
-        const amountPaid = getValue(
-            "Amount"
-        );
+        const amountPaid =
+            Number(getValue("Amount"));
 
-        const phoneNumber = getValue(
-            "PhoneNumber"
-        );
-        const transactionDate = getValue(
-            "TransactionDate"
-        );
+        const phoneNumber =
+            getValue("PhoneNumber");
+
+        const transactionDate =
+            getValue("TransactionDate");
 
 
+        // --------------------------------------
+        // Validate payment amount
+        // --------------------------------------
 
-        // Update order
-
-        const updatedOrder = await Order.findOneAndUpdate(
-
-            {
-                checkoutRequestId: CheckoutRequestID
-            },
-
-            {
-
-                paymentStatus: "Paid",
-
-                orderStatus: "Processing",
-
-                mpesaReceiptNumber,
-
-                amountPaid,
-
-                phoneNumber,
-
-                transactionDate
-
-            },
-
-        { returnDocument: "after" }
-        );
+        const expectedAmount =
+            Number(order.totalPrice);
 
 
+        if (
+            !Number.isFinite(amountPaid) ||
+            amountPaid !== expectedAmount
+        ) {
 
-        if (!updatedOrder) {
-
-            console.log(
-                "No order found for:",
-                CheckoutRequestID
+            console.error(
+                "M-Pesa amount mismatch:",
+                {
+                    orderId: order._id.toString(),
+                    expectedAmount,
+                    amountPaid
+                }
             );
 
-        } else {
-            console.log(
-                "Payment successful. Order updated:",
-                updatedOrder._id.toString()
-            );
+            order.paymentStatus = "Failed";
 
+            order.failureReason =
+                "Payment amount does not match order total";
+
+            await order.save();
+
+            return res.json({
+                ResultCode: 0,
+                ResultDesc: "Accepted"
+            });
         }
 
 
+        // --------------------------------------
+        // Validate receipt number
+        // --------------------------------------
 
-        // Reply to Safaricom
+        if (
+            !mpesaReceiptNumber ||
+            typeof mpesaReceiptNumber !== "string"
+        ) {
+
+            console.error(
+                "Missing M-Pesa receipt number"
+            );
+
+            return res.json({
+                ResultCode: 1,
+                ResultDesc: "Missing payment receipt"
+            });
+        }
+
+
+        // --------------------------------------
+        // Validate payment phone
+        // --------------------------------------
+
+        const expectedPhone =
+            normalizePhone(order.customer?.phone);
+
+        const paidPhone =
+            normalizePhone(phoneNumber);
+
+
+        if (
+            expectedPhone &&
+            paidPhone &&
+            expectedPhone !== paidPhone
+        ) {
+
+            console.error(
+                "M-Pesa phone mismatch:",
+                {
+                    orderId:
+                        order._id.toString(),
+                    expectedPhone,
+                    paidPhone
+                }
+            );
+
+            order.paymentStatus = "Failed";
+
+            order.failureReason =
+                "Payment phone does not match order phone";
+
+            await order.save();
+
+            return res.json({
+                ResultCode: 0,
+                ResultDesc: "Accepted"
+            });
+        }
+
+
+        // --------------------------------------
+        // Mark order as paid
+        // --------------------------------------
+
+        order.paymentStatus = "Paid";
+
+        order.orderStatus = "Processing";
+
+        order.mpesaReceiptNumber =
+            mpesaReceiptNumber;
+
+        order.amountPaid =
+            amountPaid;
+
+        order.phoneNumber =
+            phoneNumber;
+
+        order.transactionDate =
+            transactionDate;
+
+
+        await order.save();
+
+
+        console.log(
+            "Payment successful. Order updated:",
+            order._id.toString()
+        );
+
+
+        // --------------------------------------
+        // Acknowledge Safaricom
+        // --------------------------------------
 
         return res.json({
-
             ResultCode: 0,
-
             ResultDesc: "Accepted"
-
         });
 
 
@@ -200,13 +517,9 @@ export const mpesaCallback = async (req, res) => {
         );
 
         return res.json({
-
             ResultCode: 1,
-
             ResultDesc: "Failed"
-
         });
-
     }
-
 };
+

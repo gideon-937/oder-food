@@ -3,7 +3,7 @@
 // KITCHEN AUTHENTICATION
 // ======================================================
 
-const kitchenToken = localStorage.getItem("kitchenToken");
+let kitchenToken = localStorage.getItem("kitchenToken");
 
 if (!kitchenToken) {
     window.location.href =
@@ -1490,42 +1490,51 @@ async function toggleFoodAvailability(
 }
 
 
-// ======================================================
-// DELETE FOOD
-// ======================================================
-
+//delete food
 async function deleteFood(id) {
 
-    const confirmed =
-        confirm(
-            "Are you sure you want to delete this food?"
-        );
-
+    const confirmed = confirm(
+        "Are you sure you want to delete this food?"
+    );
 
     if (!confirmed) {
         return;
     }
 
+    // Get the latest token from localStorage
+    const token = localStorage.getItem("kitchenToken");
+
+    if (!token) {
+        alert("Please login first.");
+
+        window.location.href =
+            "http://127.0.0.1:5500/kitchen-login.html";
+
+        return;
+    }
 
     try {
 
-        const response =
-            await fetch(
-                `${API_URL}/api/food/${id}`,
-                {
-                    method: "DELETE",
+        const response = await fetch(
+            `${API_URL}/api/food/${id}`,
+            {
+                method: "DELETE",
 
-                    headers: {
-                        "Authorization":
-                            `Bearer ${kitchenToken}`
-                    }
+                headers: {
+                    "Authorization": `Bearer ${token}`
                 }
-            );
+            }
+        );
+
+        const data = await response.json();
+
+        console.log("Delete status:", response.status);
+        console.log("Delete response:", data);
 
 
-        const data =
-            await response.json();
-
+        // ==============================
+        // AUTHENTICATION ERROR
+        // ==============================
 
         if (
             response.status === 401 ||
@@ -1536,12 +1545,20 @@ async function deleteFood(id) {
                 "kitchenToken"
             );
 
+            alert(
+                "Your kitchen session has expired. Please login again."
+            );
+
             window.location.href =
                 "http://127.0.0.1:5500/kitchen-login.html";
 
             return;
         }
 
+
+        // ==============================
+        // DELETE ERROR
+        // ==============================
 
         if (!response.ok) {
 
@@ -1554,11 +1571,16 @@ async function deleteFood(id) {
         }
 
 
+        // ==============================
+        // SUCCESS
+        // ==============================
+
         alert(
             "Food deleted successfully!"
         );
 
 
+        // Reload food from database
         await loadFoods();
 
 
@@ -1569,13 +1591,10 @@ async function deleteFood(id) {
             error
         );
 
-
         alert(
             "Could not connect to server."
         );
-
     }
-
 }
 
 

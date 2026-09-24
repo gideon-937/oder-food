@@ -10,21 +10,54 @@ import {
 
 import {
     protect,
-    adminOnly
+    kitchenOnly
 } from "../middleware/auth.middleware.js";
+
+import upload from "../upload.middleware.js";
 
 const router = express.Router();
 
-// Public routes
+
+// ======================================
+// PUBLIC ROUTES
+// ======================================
+
 router.get("/", getFoods);
 
 router.get("/:id", getFood);
 
-// Admin-only routes
-router.post("/", protect, adminOnly, addFood);
 
-router.put("/:id", protect, adminOnly, updateFood);
+// ======================================
+// KITCHEN-ONLY ROUTES
+// ======================================
 
-router.delete("/:id", protect, adminOnly, deleteFood);
+// ADD FOOD
+router.post(
+    "/",
+    protect,
+    kitchenOnly,
+    upload.single("image"),
+    addFood
+);
+
+
+// UPDATE FOOD
+router.put(
+    "/:id",
+    protect,
+    kitchenOnly,
+    upload.single("image"),
+    updateFood
+);
+
+
+// DELETE FOOD
+router.delete(
+    "/:id",
+    protect,
+    kitchenOnly,
+    deleteFood
+);
+
 
 export default router;

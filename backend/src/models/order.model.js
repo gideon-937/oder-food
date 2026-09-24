@@ -1,27 +1,61 @@
+
 import mongoose from "mongoose";
 
 const orderSchema = new mongoose.Schema({
 
     customer: {
-        phone: { type: String, required: true }
+        name: {
+            type: String,
+            required: true,
+            trim: true
+        },
+
+        phone: {
+            type: String,
+            required: true,
+            trim: true
+        }
     },
 
     items: [
         {
-            name: { type: String, required: true },
-            quantity: { type: Number, required: true },
-            price: { type: Number, required: true }
+            name: {
+                type: String,
+                required: true
+            },
+
+            quantity: {
+                type: Number,
+                required: true
+            },
+
+            price: {
+                type: Number,
+                required: true
+            }
         }
     ],
 
     totalPrice: Number,
 
-    checkoutRequestId: { type: String },
-    merchantRequestId: { type: String },
-    mpesaReceiptNumber: { type: String },
+    checkoutRequestId: {
+        type: String
+    },
+
+    merchantRequestId: {
+        type: String
+    },
+
+    mpesaReceiptNumber: {
+        type: String
+    },
+
     amountPaid: Number,
+
     phoneNumber: String,
+
     transactionDate: String,
+
     failureReason: String,
 
     paymentStatus: {
@@ -35,6 +69,9 @@ const orderSchema = new mongoose.Schema({
         default: "Pending"
     }
 
-}, { timestamps: true });
+}, {
+    timestamps: true
+});
 
 export default mongoose.model("Order", orderSchema);
+
