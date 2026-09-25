@@ -36,6 +36,7 @@
     "call-bind-apply-helpers": "^1.0.2",
     "call-bound": "^1.0.4",
     "chokidar": "^3.6.0",
+    "cloudinary": "^2.11.0",
     "combined-stream": "^1.0.8",
     "content-disposition": "^1.1.0",
     "content-type": "^1.0.5",
