@@ -1,7 +1,7 @@
-
 // ======================================
 // API CONFIGURATION
 // ======================================
+
 const API_URL = "https://oder-food-2.onrender.com";
 
 console.log("MAIN SCRIPT.JS IS WORKING");
@@ -11,23 +11,42 @@ console.log("MAIN SCRIPT.JS IS WORKING");
 // GET HTML ELEMENTS
 // ======================================
 
-const foodContainer = document.getElementById("food-container");
+const foodContainer =
+    document.getElementById("food-container");
 
-const cart = document.getElementById("cart");
-const cartIcon = document.querySelector(".cart-icon");
-const closeCart = document.getElementById("close-cart");
+const cart =
+    document.getElementById("cart");
 
-const cartItems = document.getElementById("cart-items");
-const cartTotal = document.getElementById("cart-total");
-const cartCount = document.getElementById("cart-count");
+const cartIcon =
+    document.querySelector(".cart-icon");
 
-const checkoutBtn = document.getElementById("checkout-btn");
-const payBtn = document.getElementById("pay-btn");
+const closeCart =
+    document.getElementById("close-cart");
 
-const paymentBox = document.getElementById("payment-box");
-const phoneInput = document.getElementById("phone");
+const cartItems =
+    document.getElementById("cart-items");
 
-const paymentStatus = document.getElementById("payment-status");
+const cartTotal =
+    document.getElementById("cart-total");
+
+const cartCount =
+    document.getElementById("cart-count");
+
+const checkoutBtn =
+    document.getElementById("checkout-btn");
+
+const payBtn =
+    document.getElementById("pay-btn");
+
+const paymentBox =
+    document.getElementById("payment-box");
+
+const phoneInput =
+    document.getElementById("phone");
+
+const paymentStatus =
+    document.getElementById("payment-status");
+
 const paymentStatusText =
     document.getElementById("payment-status-text");
 
@@ -40,7 +59,9 @@ const customerNameInput =
 // ======================================
 
 let shoppingCart =
-    JSON.parse(localStorage.getItem("shoppingCart")) || [];
+    JSON.parse(
+        localStorage.getItem("shoppingCart")
+    ) || [];
 
 
 // ======================================
@@ -58,45 +79,136 @@ function saveCart() {
 
 
 // ======================================
+// RESET PAYMENT UI
+// ======================================
+
+function resetPaymentUI() {
+
+    // Hide payment box
+    paymentBox.style.display =
+        "none";
+
+
+    // Hide payment status
+    paymentStatus.style.display =
+        "none";
+
+
+    // Clear payment message
+    paymentStatusText.textContent =
+        "";
+
+
+    // Reset Pay Now button
+    payBtn.disabled =
+        false;
+
+    payBtn.textContent =
+        "Pay Now";
+
+
+    // Restore Checkout button
+    if (shoppingCart.length > 0) {
+
+        checkoutBtn.style.display =
+            "block";
+
+        checkoutBtn.disabled =
+            false;
+
+        checkoutBtn.style.opacity =
+            "1";
+
+        checkoutBtn.style.cursor =
+            "pointer";
+
+    } else {
+
+        checkoutBtn.style.display =
+            "block";
+
+        checkoutBtn.disabled =
+            true;
+
+        checkoutBtn.style.opacity =
+            "0.5";
+
+        checkoutBtn.style.cursor =
+            "not-allowed";
+
+    }
+
+}
+
+
+// ======================================
 // FOOD IMAGE URL
 // ======================================
 
 function getFoodImageUrl(image) {
 
     if (!image) {
+
         return "";
+
     }
 
-    image = String(image).trim();
+
+    image =
+        String(image).trim();
 
 
-    // Complete URL
+    // ======================================
+    // COMPLETE URL
+    // ======================================
+
     if (
         image.startsWith("http://") ||
         image.startsWith("https://") ||
         image.startsWith("data:")
     ) {
+
         return image;
+
     }
 
 
-    // Windows path -> web path
-    image = image.replace(/\\/g, "/");
+    // ======================================
+    // WINDOWS PATH -> WEB PATH
+    // ======================================
+
+    image =
+        image.replace(
+            /\\/g,
+            "/"
+        );
 
 
-    // Find /uploads/
-    if (image.includes("/uploads/")) {
+    // ======================================
+    // FIND /uploads/
+    // ======================================
+
+    if (
+        image.includes("/uploads/")
+    ) {
 
         image =
             image.substring(
-                image.indexOf("/uploads/")
+                image.indexOf(
+                    "/uploads/"
+                )
             );
 
     }
 
 
-    // Only filename
-    if (!image.startsWith("/")) {
+    // ======================================
+    // ONLY FILENAME
+    // ======================================
+
+    if (
+        !image.startsWith("/")
+    ) {
 
         image =
             `/uploads/food/${image}`;
@@ -105,6 +217,7 @@ function getFoodImageUrl(image) {
 
 
     return `${API_URL}${image}`;
+
 }
 
 
@@ -155,6 +268,7 @@ async function loadFoods() {
             `;
 
             return;
+
         }
 
 
@@ -170,7 +284,9 @@ async function loadFoods() {
         );
 
 
-        displayFoods(foods);
+        displayFoods(
+            foods
+        );
 
 
     } catch (error) {
@@ -210,139 +326,152 @@ function displayFoods(foods) {
         `;
 
         return;
+
     }
 
 
-    foodContainer.innerHTML = "";
+    foodContainer.innerHTML =
+        "";
 
 
-    foods.forEach(food => {
+    foods.forEach(
+        food => {
 
-        const imageUrl =
-            getFoodImageUrl(
+            const imageUrl =
+                getFoodImageUrl(
+                    food.image
+                );
+
+
+            console.log(
+                "--------------------------------"
+            );
+
+
+            console.log(
+                "FOOD:",
+                food.name
+            );
+
+
+            console.log(
+                "FOOD ID:",
+                food._id
+            );
+
+
+            console.log(
+                "DATABASE IMAGE:",
                 food.image
             );
 
 
-        console.log(
-            "--------------------------------"
-        );
-
-        console.log(
-            "FOOD:",
-            food.name
-        );
-
-        console.log(
-            "FOOD ID:",
-            food._id
-        );
-
-        console.log(
-            "DATABASE IMAGE:",
-            food.image
-        );
-
-        console.log(
-            "FINAL IMAGE URL:",
-            imageUrl
-        );
-
-
-        const available =
-            food.available !== false;
-
-
-        const foodCard =
-            document.createElement("div");
-
-
-        foodCard.className = "hero";
-
-
-        foodCard.innerHTML = `
-
-            ${
+            console.log(
+                "FINAL IMAGE URL:",
                 imageUrl
-                    ? `
-                        <img
-                            src="${imageUrl}"
-                            alt="${food.name}"
-                            class="food-image"
-                            onerror="
-                                console.error(
-                                    'IMAGE FAILED:',
-                                    this.src
-                                );
-                            "
-                        >
-                    `
-                    : `
-                        <div class="no-image">
-                            No Image
-                        </div>
-                    `
-            }
+            );
 
 
-            <h1 class="price">
-                KSh ${Number(food.price).toLocaleString()}
-            </h1>
+            const available =
+                food.available !== false;
 
 
-            <p>
-                ${food.name}
-            </p>
+            const foodCard =
+                document.createElement(
+                    "div"
+                );
 
 
-            <p>
-                ${food.description || ""}
-            </p>
+            foodCard.className =
+                "hero";
 
 
-            ${
-                food.category
-                    ? `
-                        <p>
-                            Category:
-                            ${food.category}
-                        </p>
-                    `
-                    : ""
-            }
+            foodCard.innerHTML = `
+
+                ${
+                    imageUrl
+                        ? `
+                            <img
+                                src="${imageUrl}"
+                                alt="${food.name}"
+                                class="food-image"
+                                onerror="
+                                    console.error(
+                                        'IMAGE FAILED:',
+                                        this.src
+                                    );
+                                "
+                            >
+                        `
+                        : `
+                            <div class="no-image">
+                                No Image
+                            </div>
+                        `
+                }
 
 
-            ${
-                available
-                    ? `
-                        <button
-                            class="add-cart-btn"
-                            data-id="${food._id}"
-                            data-name="${food.name}"
-                            data-price="${food.price}"
-                            data-image="${food.image || ""}"
-                        >
-                            🛒 Add to Cart
-                        </button>
-                    `
-                    : `
-                        <button
-                            class="add-cart-btn"
-                            disabled
-                        >
-                            ❌ Unavailable
-                        </button>
-                    `
-            }
-
-        `;
+                <h1 class="price">
+                    KSh ${Number(
+                        food.price
+                    ).toLocaleString()}
+                </h1>
 
 
-        foodContainer.appendChild(
-            foodCard
-        );
+                <p>
+                    ${food.name}
+                </p>
 
-    });
+
+                <p>
+                    ${food.description || ""}
+                </p>
+
+
+                ${
+                    food.category
+                        ? `
+                            <p>
+                                Category:
+                                ${food.category}
+                            </p>
+                        `
+                        : ""
+                }
+
+
+                ${
+                    available
+                        ? `
+                            <button
+                                class="add-cart-btn"
+                                data-id="${food._id}"
+                                data-name="${food.name}"
+                                data-price="${food.price}"
+                                data-image="${food.image || ""}"
+                            >
+                                🛒 Add to Cart
+                            </button>
+                        `
+                        : `
+                            <button
+                                class="add-cart-btn"
+                                disabled
+                            >
+                                ❌ Unavailable
+                            </button>
+                        `
+                }
+
+            `;
+
+
+            foodContainer.appendChild(
+                foodCard
+            );
+
+        }
+    );
 
 
     // ======================================
@@ -355,100 +484,112 @@ function displayFoods(foods) {
         );
 
 
-    buttons.forEach(button => {
+    buttons.forEach(
+        button => {
 
-        button.addEventListener(
-            "click",
-            () => {
+            button.addEventListener(
+                "click",
+                () => {
 
-                // ======================================
-                // GET FOOD INFORMATION
-                // ======================================
+                    // ======================================
+                    // GET FOOD INFORMATION
+                    // ======================================
 
-                const foodId =
-                    button.dataset.id;
-
-
-                const name =
-                    button.dataset.name;
+                    const foodId =
+                        button.dataset.id;
 
 
-                const price =
-                    Number(
-                        button.dataset.price
+                    const name =
+                        button.dataset.name;
+
+
+                    const price =
+                        Number(
+                            button.dataset.price
+                        );
+
+
+                    const image =
+                        button.dataset.image;
+
+
+                    // ======================================
+                    // CHECK FOOD ID
+                    // ======================================
+
+                    if (!foodId) {
+
+                        console.error(
+                            "Food ID is missing."
+                        );
+
+
+                        alert(
+                            "Unable to add this food to the basket. Please refresh the page."
+                        );
+
+
+                        return;
+
+                    }
+
+
+                    // ======================================
+                    // CHECK EXISTING ITEM
+                    // ======================================
+
+                    const existing =
+                        shoppingCart.find(
+                            item =>
+                                item.foodId ===
+                                foodId
+                        );
+
+
+                    if (existing) {
+
+                        existing.quantity++;
+
+                    } else {
+
+                        shoppingCart.push({
+
+                            foodId:
+                                foodId,
+
+                            name:
+                                name,
+
+                            price:
+                                price,
+
+                            image:
+                                image,
+
+                            quantity:
+                                1
+
+                        });
+
+                    }
+
+
+                    saveCart();
+
+
+                    displayCart();
+
+
+                    // Open cart
+                    cart.classList.add(
+                        "active"
                     );
 
-
-                const image =
-                    button.dataset.image;
-
-
-                // ======================================
-                // CHECK FOOD ID
-                // ======================================
-
-                if (!foodId) {
-
-                    console.error(
-                        "Food ID is missing."
-                    );
-
-                    alert(
-                        "Unable to add this food to the basket. Please refresh the page."
-                    );
-
-                    return;
                 }
+            );
 
-
-                // ======================================
-                // CHECK EXISTING ITEM
-                // ======================================
-
-                const existing =
-                    shoppingCart.find(
-                        item =>
-                            item.foodId === foodId
-                    );
-
-
-                if (existing) {
-
-                    existing.quantity++;
-
-                } else {
-
-                    shoppingCart.push({
-
-                        // MongoDB Food ID
-                        foodId: foodId,
-
-                        // Display information
-                        name: name,
-
-                        price: price,
-
-                        image: image,
-
-                        quantity: 1
-
-                    });
-
-                }
-
-
-                saveCart();
-
-                displayCart();
-
-                cart.classList.add(
-                    "active"
-                );
-
-            }
-        );
-
-    });
+        }
+    );
 
 }
 
@@ -459,8 +600,13 @@ function displayFoods(foods) {
 
 function displayCart() {
 
-    cartItems.innerHTML = "";
+    cartItems.innerHTML =
+        "";
 
+
+    // ======================================
+    // EMPTY CART
+    // ======================================
 
     if (
         shoppingCart.length === 0
@@ -472,9 +618,13 @@ function displayCart() {
             </p>
         `;
 
-        cartTotal.textContent = "0";
 
-        cartCount.textContent = "0";
+        cartTotal.textContent =
+            "0";
+
+
+        cartCount.textContent =
+            "0";
 
 
         // Show Checkout button
@@ -482,7 +632,7 @@ function displayCart() {
             "block";
 
 
-        // Disable checkout
+        // Disable Checkout
         checkoutBtn.disabled =
             true;
 
@@ -500,13 +650,46 @@ function displayCart() {
             "none";
 
 
+        // Hide payment status
+        paymentStatus.style.display =
+            "none";
+
+
         return;
+
     }
 
 
-    let total = 0;
+    // ======================================
+    // CART HAS ITEMS
+    // ======================================
 
-    let count = 0;
+    // IMPORTANT:
+    // Always restore Checkout button
+    // whenever the cart has items.
+
+    checkoutBtn.style.display =
+        "block";
+
+
+    checkoutBtn.disabled =
+        false;
+
+
+    checkoutBtn.style.opacity =
+        "1";
+
+
+    checkoutBtn.style.cursor =
+        "pointer";
+
+
+    let total =
+        0;
+
+
+    let count =
+        0;
 
 
     shoppingCart.forEach(
@@ -517,7 +700,9 @@ function displayCart() {
                 Number(item.quantity);
 
 
-            total += itemTotal;
+            total +=
+                itemTotal;
+
 
             count +=
                 Number(item.quantity);
@@ -623,6 +808,10 @@ function displayCart() {
     );
 
 
+    // ======================================
+    // UPDATE TOTAL
+    // ======================================
+
     cartTotal.textContent =
         total.toLocaleString();
 
@@ -639,31 +828,34 @@ function displayCart() {
         .querySelectorAll(
             ".increase-btn"
         )
-        .forEach(button => {
+        .forEach(
+            button => {
 
-            button.addEventListener(
-                "click",
-                () => {
+                button.addEventListener(
+                    "click",
+                    () => {
 
-                    const index =
-                        Number(
-                            button.dataset.index
-                        );
-
-
-                    shoppingCart[
-                        index
-                    ].quantity++;
+                        const index =
+                            Number(
+                                button.dataset.index
+                            );
 
 
-                    saveCart();
+                        shoppingCart[
+                            index
+                        ].quantity++;
 
-                    displayCart();
 
-                }
-            );
+                        saveCart();
 
-        });
+
+                        displayCart();
+
+                    }
+                );
+
+            }
+        );
 
 
     // ======================================
@@ -674,46 +866,49 @@ function displayCart() {
         .querySelectorAll(
             ".decrease-btn"
         )
-        .forEach(button => {
+        .forEach(
+            button => {
 
-            button.addEventListener(
-                "click",
-                () => {
+                button.addEventListener(
+                    "click",
+                    () => {
 
-                    const index =
-                        Number(
-                            button.dataset.index
-                        );
+                        const index =
+                            Number(
+                                button.dataset.index
+                            );
 
 
-                    if (
-                        shoppingCart[
-                            index
-                        ].quantity > 1
-                    ) {
+                        if (
+                            shoppingCart[
+                                index
+                            ].quantity > 1
+                        ) {
 
-                        shoppingCart[
-                            index
-                        ].quantity--;
+                            shoppingCart[
+                                index
+                            ].quantity--;
 
-                    } else {
+                        } else {
 
-                        shoppingCart.splice(
-                            index,
-                            1
-                        );
+                            shoppingCart.splice(
+                                index,
+                                1
+                            );
+
+                        }
+
+
+                        saveCart();
+
+
+                        displayCart();
 
                     }
+                );
 
-
-                    saveCart();
-
-                    displayCart();
-
-                }
-            );
-
-        });
+            }
+        );
 
 
     // ======================================
@@ -724,32 +919,35 @@ function displayCart() {
         .querySelectorAll(
             ".remove-btn"
         )
-        .forEach(button => {
+        .forEach(
+            button => {
 
-            button.addEventListener(
-                "click",
-                () => {
+                button.addEventListener(
+                    "click",
+                    () => {
 
-                    const index =
-                        Number(
-                            button.dataset.index
+                        const index =
+                            Number(
+                                button.dataset.index
+                            );
+
+
+                        shoppingCart.splice(
+                            index,
+                            1
                         );
 
 
-                    shoppingCart.splice(
-                        index,
-                        1
-                    );
+                        saveCart();
 
 
-                    saveCart();
+                        displayCart();
 
-                    displayCart();
+                    }
+                );
 
-                }
-            );
-
-        });
+            }
+        );
 
 }
 
@@ -778,9 +976,15 @@ closeCart.addEventListener(
     "click",
     () => {
 
+        // Close cart
         cart.classList.remove(
             "active"
         );
+
+
+        // IMPORTANT:
+        // Return payment area to original state
+        resetPaymentUI();
 
     }
 );
@@ -802,7 +1006,9 @@ checkoutBtn.addEventListener(
                 "Your shopping basket is empty."
             );
 
+
             return;
+
         }
 
 
@@ -816,13 +1022,17 @@ checkoutBtn.addEventListener(
             "block";
 
 
-        // Hide payment status
+        // Hide previous payment status
         paymentStatus.style.display =
             "none";
 
 
-        // Put cursor in phone input
-        phoneInput.focus();
+        paymentStatusText.textContent =
+            "";
+
+
+        // Put cursor in customer name
+        customerNameInput.focus();
 
     }
 );
@@ -866,9 +1076,12 @@ payBtn.addEventListener(
                 "Please enter your name before making payment."
             );
 
+
             customerNameInput.focus();
 
+
             return;
+
         }
 
 
@@ -882,9 +1095,12 @@ payBtn.addEventListener(
                 "Please enter your M-Pesa phone number."
             );
 
+
             phoneInput.focus();
 
+
             return;
+
         }
 
 
@@ -896,15 +1112,22 @@ payBtn.addEventListener(
                 "Enter a valid M-Pesa number starting with 07, e.g. 0712345678"
             );
 
+
             phoneInput.focus();
 
+
             return;
+
         }
 
 
-        // Convert 0712345678 -> 254712345678
+        // ======================================
+        // CONVERT PHONE
+        // ======================================
+
         const mpesaPhone =
-            "254" + phone.substring(1);
+            "254" +
+            phone.substring(1);
 
 
         // ======================================
@@ -919,23 +1142,22 @@ payBtn.addEventListener(
                 "Your shopping basket is empty."
             );
 
+
             return;
+
         }
 
 
         // ======================================
         // CALCULATE TOTAL
         // ======================================
-        // NOTE:
-        // This total is only used by the frontend
-        // for displaying information.
-        //
-        // The secure backend will calculate the
-        // final amount from MongoDB.
 
         const totalPrice =
             shoppingCart.reduce(
-                (total, item) => {
+                (
+                    total,
+                    item
+                ) => {
 
                     return (
                         total +
@@ -950,7 +1172,13 @@ payBtn.addEventListener(
 
         try {
 
-            payBtn.disabled = true;
+            // ======================================
+            // DISABLE PAY BUTTON
+            // ======================================
+
+            payBtn.disabled =
+                true;
+
 
             payBtn.textContent =
                 "Processing...";
@@ -979,60 +1207,49 @@ payBtn.addEventListener(
                                 "application/json"
                         },
 
+                        body:
+                            JSON.stringify({
 
-                        body: JSON.stringify({
+                                customer: {
 
-                            customer: {
+                                    name:
+                                        customerName,
 
-                                name:
-                                    customerName,
+                                    phone:
+                                        mpesaPhone
 
-                                phone:
-                                    mpesaPhone
+                                },
 
-                            },
+                                items:
+                                    shoppingCart.map(
+                                        item => ({
 
+                                            foodId:
+                                                item.foodId,
 
-                            items:
-                                shoppingCart.map(
-                                    item => ({
+                                            name:
+                                                item.name,
 
-                                        // IMPORTANT:
-                                        // Send the real MongoDB
-                                        // food ID to the backend.
-                                        foodId:
-                                            item.foodId,
+                                            price:
+                                                Number(
+                                                    item.price
+                                                ),
 
-                                        // These are kept temporarily
-                                        // for compatibility with your
-                                        // current backend.
-                                        name:
-                                            item.name,
+                                            quantity:
+                                                Number(
+                                                    item.quantity
+                                                ),
 
-                                        price:
-                                            Number(
-                                                item.price
-                                            ),
+                                            image:
+                                                item.image
 
-                                        quantity:
-                                            Number(
-                                                item.quantity
-                                            ),
+                                        })
+                                    ),
 
-                                        image:
-                                            item.image
+                                totalPrice:
+                                    totalPrice
 
-                                    })
-                                ),
-
-
-                            // Kept for compatibility.
-                            // The secure backend should NOT trust
-                            // this value.
-                            totalPrice:
-                                totalPrice
-
-                        })
+                            })
 
                     }
                 );
@@ -1074,6 +1291,12 @@ payBtn.addEventListener(
             }
 
 
+            console.log(
+                "ORDER ID:",
+                orderId
+            );
+
+
             // ======================================
             // INITIATE MPESA STK PUSH
             // ======================================
@@ -1093,19 +1316,19 @@ payBtn.addEventListener(
                                 "application/json"
                         },
 
+                        body:
+                            JSON.stringify({
 
-                        body: JSON.stringify({
+                                phone:
+                                    mpesaPhone,
 
-                            phone:
-                                mpesaPhone,
+                                amount:
+                                    totalPrice,
 
-                            amount:
-                                totalPrice,
+                                orderId:
+                                    orderId
 
-                            orderId:
-                                orderId
-
-                        })
+                            })
 
                     }
                 );
@@ -1132,6 +1355,10 @@ payBtn.addEventListener(
 
             }
 
+
+            // ======================================
+            // PAYMENT REQUEST SENT
+            // ======================================
 
             paymentStatusText.textContent =
                 "Please check your phone and enter your M-Pesa PIN.";
@@ -1165,7 +1392,10 @@ payBtn.addEventListener(
                 "Payment failed. Please try again.";
 
 
-            payBtn.disabled = false;
+            // Allow Pay Now again
+            payBtn.disabled =
+                false;
+
 
             payBtn.textContent =
                 "Pay Now";
@@ -1180,17 +1410,28 @@ payBtn.addEventListener(
 // CHECK PAYMENT STATUS
 // ======================================
 
-async function checkPaymentStatus(orderId) {
+async function checkPaymentStatus(
+    orderId
+) {
 
-    let attempts = 0;
+    let attempts =
+        0;
 
 
-    // Check for up to 3 minutes
-    const maxAttempts = 60;
+    // ======================================
+    // MAXIMUM 3 MINUTES
+    // ======================================
+
+    const maxAttempts =
+        60;
 
 
-    // Check every 3 seconds
-    const intervalMs = 3000;
+    // ======================================
+    // EVERY 3 SECONDS
+    // ======================================
+
+    const intervalMs =
+        3000;
 
 
     console.log(
@@ -1218,6 +1459,10 @@ async function checkPaymentStatus(orderId) {
 
                 try {
 
+                    // ======================================
+                    // GET PAYMENT STATUS
+                    // ======================================
+
                     const response =
                         await fetch(
                             `${API_URL}/api/orders/payment-status/${orderId}`
@@ -1230,14 +1475,18 @@ async function checkPaymentStatus(orderId) {
                     );
 
 
-                    if (!response.ok) {
+                    if (
+                        !response.ok
+                    ) {
 
                         console.error(
                             "Payment status request failed:",
                             response.status
                         );
 
+
                         return;
+
                     }
 
 
@@ -1252,7 +1501,7 @@ async function checkPaymentStatus(orderId) {
 
 
                     // ======================================
-                    // GET PAYMENT STATUS
+                    // GET STATUS
                     // ======================================
 
                     const status =
@@ -1309,7 +1558,8 @@ async function checkPaymentStatus(orderId) {
                         // CLEAR SHOPPING CART
                         // ======================================
 
-                        shoppingCart = [];
+                        shoppingCart =
+                            [];
 
 
                         localStorage.removeItem(
@@ -1386,13 +1636,16 @@ async function checkPaymentStatus(orderId) {
                         // CLEAR CUSTOMER INPUTS
                         // ======================================
 
-                        phoneInput.value = "";
+                        phoneInput.value =
+                            "";
 
-                        customerNameInput.value = "";
+
+                        customerNameInput.value =
+                            "";
 
 
                         // ======================================
-                        // VERIFY CART WAS CLEARED
+                        // VERIFY CART
                         // ======================================
 
                         console.log(
@@ -1419,11 +1672,12 @@ async function checkPaymentStatus(orderId) {
 
 
                         return;
+
                     }
 
 
                     // ======================================
-                    // FAILED
+                    // FAILED / CANCELLED
                     // ======================================
 
                     if (
@@ -1438,10 +1692,15 @@ async function checkPaymentStatus(orderId) {
                         );
 
 
+                        paymentStatus.style.display =
+                            "block";
+
+
                         paymentStatusText.textContent =
-                            "Payment was not completed.";
+                            "Payment was not completed. You can try again.";
 
 
+                        // Allow retry
                         payBtn.disabled =
                             false;
 
@@ -1456,15 +1715,8 @@ async function checkPaymentStatus(orderId) {
 
 
                         return;
+
                     }
-
-
-                    // ======================================
-                    // PENDING
-                    // ======================================
-
-                    paymentStatusText.textContent =
-                        "Waiting for M-Pesa payment confirmation...";
 
 
                     // ======================================
@@ -1478,6 +1730,10 @@ async function checkPaymentStatus(orderId) {
                         clearInterval(
                             interval
                         );
+
+
+                        paymentStatus.style.display =
+                            "block";
 
 
                         paymentStatusText.textContent =
@@ -1496,9 +1752,25 @@ async function checkPaymentStatus(orderId) {
                             "PAYMENT POLLING TIMED OUT"
                         );
 
+
+                        return;
+
                     }
 
+
+                    // ======================================
+                    // PENDING
+                    // ======================================
+
+                    paymentStatus.style.display =
+                        "block";
+
+
+                    paymentStatusText.textContent =
+                        "Waiting for M-Pesa payment confirmation...";
+
                 }
+
 
                 catch (error) {
 
@@ -1523,4 +1795,3 @@ async function checkPaymentStatus(orderId) {
 displayCart();
 
 loadFoods();
-
