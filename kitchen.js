@@ -7,7 +7,7 @@ let kitchenToken = localStorage.getItem("kitchenToken");
 
 if (!kitchenToken) {
     window.location.href =
-        "https://oder-food-3.onrender.com/kitchen-login.html";
+        "https://oder-food-2.onrender.com/kitchen-login.html";
 }
 
 
@@ -96,7 +96,7 @@ async function loadOrders() {
             localStorage.removeItem("kitchenToken");
 
             window.location.href =
-                "https://oder-food-3.onrender.com/kitchen-login.html";
+                "https://oder-food-2.onrender.com/kitchen-login.html";
 
             return;
         }
@@ -407,7 +407,7 @@ async function updateOrderStatus(
             );
 
             window.location.href =
-                "https://oder-food-3.onrender.com/kitchen-login.html";
+                "https://oder-food-2.onrender.com/kitchen-login.html";
                
 
             return;
@@ -1203,7 +1203,7 @@ foodForm.addEventListener(
                 );
 
                 window.location.href =
-                        "https://oder-food-3.onrender.com/kitchen-login.html";
+                        "https://oder-food-2.onrender.com/kitchen-login.html";
 
                 return;
             }
@@ -1453,7 +1453,7 @@ async function toggleFoodAvailability(
             );
 
             window.location.href =
-                    "https://oder-food-3.onrender.com/kitchen-login.html";
+                    "https://oder-food-2.onrender.com/kitchen-login.html";
 
             return;
         }
@@ -1508,7 +1508,7 @@ async function deleteFood(id) {
         alert("Please login first.");
 
         window.location.href =
-                "https://oder-food-3.onrender.com/kitchen-login.html";
+                "https://oder-food-2.onrender.com/kitchen-login.html";
 
         return;
     }
@@ -1550,7 +1550,7 @@ async function deleteFood(id) {
             );
 
             window.location.href =
-                   "https://oder-food-3.onrender.com/kitchen-login.html";
+                   "https://oder-food-2.onrender.com/kitchen-login.html";
 
             return;
         }
@@ -1628,7 +1628,7 @@ logoutBtn.addEventListener(
 
 
         window.location.href =
-             "https://oder-food-3.onrender.com/kitchen-login.html";
+             "https://oder-food-2.onrender.com/kitchen-login.html";
 
     }
 );
