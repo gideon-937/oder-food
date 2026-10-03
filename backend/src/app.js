@@ -1,3 +1,4 @@
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -12,7 +13,6 @@ import cartRoutes from "./routes/cart.route.js";
 import mpesaRoutes from "./routes/mpesa.route.js";
 
 const app = express();
-
 
 
 // ======================================
@@ -50,13 +50,12 @@ app.use(
 // CORS
 // ======================================
 
-// Development
 const allowedOrigins = [
     "http://localhost:5500",
     "http://127.0.0.1:5500",
     "http://localhost:5000",
     "http://127.0.0.1:5000",
-    "https://oder-food-3.onrender.com"
+    "https://oder-food-2.onrender.com"
 ];
 
 app.use(
@@ -116,7 +115,6 @@ app.use(
 // RATE LIMITING
 // ======================================
 
-// General API protection
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
 
@@ -171,8 +169,6 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/cart", cartRoutes);
 
 
-
-
 // ======================================
 // 404 API HANDLER
 // ======================================
@@ -216,3 +212,4 @@ app.use((error, req, res, next) => {
 
 
 export default app;
+
