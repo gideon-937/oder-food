@@ -6,8 +6,15 @@
     box-sizing: border-box;
 }
 
+html,
 body {
     margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+}
+
+body {
     font-family: Verdana, Geneva, Tahoma, sans-serif;
     background-color: wheat;
     color: #333;
@@ -327,11 +334,17 @@ h3 {
 #customer-phone,
 #delivery-address {
     width: 100%;
+
     padding: 12px;
+
     margin: 8px 0 15px;
+
     border: 1px solid #ccc;
+
     border-radius: 6px;
+
     font-size: 16px;
+
     box-sizing: border-box;
 }
 
@@ -339,8 +352,10 @@ h3 {
 #customer-phone:focus,
 #delivery-address:focus {
     border-color: #007bff;
+
     outline: none;
 }
+
 .footer-section h2,
 .footer-section h3 {
     margin-bottom: 15px;
@@ -407,7 +422,13 @@ h3 {
 
     width: 350px;
 
-    height: 100vh;
+    /*
+       Use dynamic viewport height.
+       This works better on mobile browsers.
+    */
+    height: 100dvh;
+
+    min-height: 100vh;
 
     background: #ffffff;
 
@@ -420,11 +441,19 @@ h3 {
 
     flex-direction: column;
 
-    z-index: 1000;
+    z-index: 2000;
+
+    /*
+       Prevent anything outside the cart
+       from interfering with the cart.
+    */
+    overflow: hidden;
 }
 
 
-/* Show cart */
+/* ======================================
+   SHOW CART
+====================================== */
 
 .cart.active {
     right: 0;
@@ -447,6 +476,8 @@ h3 {
     background: #ff6b35;
 
     color: white;
+
+    flex-shrink: 0;
 }
 
 .cart-header h2 {
@@ -465,6 +496,25 @@ h3 {
     font-size: 28px;
 
     cursor: pointer;
+
+    /*
+       Make X easy to tap on a phone.
+    */
+    width: 45px;
+
+    height: 45px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    padding: 0;
+
+    position: relative;
+
+    z-index: 10;
 }
 
 
@@ -475,9 +525,23 @@ h3 {
 #cart-items {
     flex: 1;
 
+    min-height: 0;
+
     overflow-y: auto;
 
+    overflow-x: hidden;
+
     padding: 15px;
+
+    /*
+       Allows smooth scrolling on phones.
+    */
+    -webkit-overflow-scrolling: touch;
+
+    /*
+       Keep space between items and footer.
+    */
+    padding-bottom: 25px;
 }
 
 .cart-item {
@@ -496,7 +560,9 @@ h3 {
 }
 
 
-/* Cart food image */
+/* ======================================
+   CART FOOD IMAGE
+====================================== */
 
 .cart-item img,
 .cart-food-image {
@@ -518,12 +584,16 @@ h3 {
 
 .cart-item-details {
     flex: 1;
+
+    min-width: 0;
 }
 
 .cart-item-details h4 {
     margin: 0 0 5px;
 
     font-size: 17px;
+
+    word-break: break-word;
 }
 
 .cart-item-details p {
@@ -550,9 +620,9 @@ h3 {
 }
 
 .quantity-controls button {
-    width: 30px;
+    width: 40px;
 
-    height: 30px;
+    height: 40px;
 
     border: none;
 
@@ -565,6 +635,11 @@ h3 {
     border-radius: 5px;
 
     font-size: 18px;
+
+    /*
+       Better touch target on phones.
+    */
+    touch-action: manipulation;
 }
 
 .quantity-controls span {
@@ -587,13 +662,15 @@ h3 {
 
     color: white;
 
-    padding: 8px 10px;
+    padding: 10px 12px;
 
     border-radius: 5px;
 
     cursor: pointer;
 
     margin-top: 5px;
+
+    touch-action: manipulation;
 }
 
 .remove-btn:hover {
@@ -612,6 +689,26 @@ h3 {
         1px solid #ddd;
 
     background: white;
+
+    /*
+       Footer must never shrink away.
+    */
+    flex-shrink: 0;
+
+    /*
+       Make sure footer is above the
+       scrolling cart items.
+    */
+    position: relative;
+
+    z-index: 5;
+
+    /*
+       Extra space for phones with
+       bottom browser/navigation areas.
+    */
+    padding-bottom:
+        calc(20px + env(safe-area-inset-bottom));
 }
 
 .cart-footer h3 {
@@ -628,6 +725,8 @@ h3 {
 #checkout-btn {
     width: 100%;
 
+    min-height: 50px;
+
     padding: 15px;
 
     background: #ff6b35;
@@ -643,10 +742,39 @@ h3 {
     cursor: pointer;
 
     transition: 0.3s;
+
+    /*
+       Prevent mobile browsers from
+       treating taps strangely.
+    */
+    touch-action: manipulation;
+
+    position: relative;
+
+    z-index: 10;
 }
 
 #checkout-btn:hover {
     background: #e85b2b;
+}
+
+#checkout-btn:disabled {
+    cursor: not-allowed;
+}
+
+
+/* ======================================
+   PAYMENT BOX
+====================================== */
+
+#payment-box {
+    width: 100%;
+
+    margin-top: 15px;
+
+    position: relative;
+
+    z-index: 10;
 }
 
 
@@ -656,6 +784,8 @@ h3 {
 
 #pay-btn {
     width: 100%;
+
+    min-height: 50px;
 
     height: 50px;
 
@@ -678,6 +808,12 @@ h3 {
     cursor: pointer;
 
     transition: 0.3s ease;
+
+    touch-action: manipulation;
+
+    position: relative;
+
+    z-index: 10;
 }
 
 #pay-btn:hover {
@@ -697,6 +833,8 @@ h3 {
 
 #phone {
     width: 100%;
+
+    min-height: 48px;
 
     padding: 12px;
 
@@ -724,6 +862,10 @@ h3 {
     border-radius: 8px;
 
     text-align: center;
+
+    position: relative;
+
+    z-index: 10;
 }
 
 #payment-status-text {
@@ -762,6 +904,8 @@ h3 {
 
     box-shadow:
         0 4px 10px rgba(0, 0, 0, 0.2);
+
+    touch-action: manipulation;
 }
 
 #cart-count {
@@ -781,7 +925,10 @@ h3 {
    RESPONSIVE DESIGN
 ====================================== */
 
-/* Tablets */
+
+/* ======================================
+   TABLETS
+====================================== */
 
 @media (max-width: 900px) {
 
@@ -798,7 +945,9 @@ h3 {
 }
 
 
-/* Phones */
+/* ======================================
+   PHONES
+====================================== */
 
 @media (max-width: 600px) {
 
@@ -844,10 +993,32 @@ h3 {
     }
 
 
+    /* ======================================
+       MOBILE CART
+    ====================================== */
+
     .cart {
+
         width: 100%;
 
         right: -100%;
+
+        /*
+           Use the actual visible viewport
+           on modern phones.
+        */
+        height: 100dvh;
+
+        min-height: 100vh;
+
+        /*
+           Ensure the cart itself is a flex
+           container.
+        */
+        display: flex;
+
+        flex-direction: column;
+
     }
 
 
@@ -856,10 +1027,182 @@ h3 {
     }
 
 
-    .cart-icon {
-        top: 15px;
+    /* ======================================
+       MOBILE CART HEADER
+    ====================================== */
 
-        right: 15px;
+    .cart-header {
+        padding:
+            15px 20px;
+
+        flex-shrink: 0;
+    }
+
+
+    /* ======================================
+       MOBILE CART ITEMS
+    ====================================== */
+
+    #cart-items {
+
+        flex: 1;
+
+        min-height: 0;
+
+        overflow-y: auto;
+
+        -webkit-overflow-scrolling: touch;
+
+        /*
+           Leave enough space so the last
+           food item doesn't sit underneath
+           the footer.
+        */
+        padding-bottom: 30px;
+    }
+
+
+    /* ======================================
+       MOBILE CART FOOTER
+    ====================================== */
+
+    .cart-footer {
+
+        flex-shrink: 0;
+
+        width: 100%;
+
+        padding:
+            15px 20px;
+
+        padding-bottom:
+            calc(
+                20px +
+                env(safe-area-inset-bottom)
+            );
+
+        background: white;
+
+        /*
+           Keep footer visible.
+        */
+        position: relative;
+
+        z-index: 20;
+    }
+
+
+    /* ======================================
+       MOBILE CHECKOUT
+    ====================================== */
+
+    #checkout-btn {
+
+        width: 100%;
+
+        min-height: 55px;
+
+        font-size: 18px;
+
+        padding: 15px;
+
+        /*
+           Ensure the button receives
+           touch events.
+        */
+        pointer-events: auto;
+
+        touch-action: manipulation;
+
+        position: relative;
+
+        z-index: 30;
+    }
+
+
+    /* ======================================
+       MOBILE PAYMENT BUTTON
+    ====================================== */
+
+    #pay-btn {
+
+        min-height: 55px;
+
+        height: 55px;
+
+        font-size: 17px;
+
+        pointer-events: auto;
+
+        touch-action: manipulation;
+
+        position: relative;
+
+        z-index: 30;
+    }
+
+
+    /* ======================================
+       MOBILE CLOSE BUTTON
+    ====================================== */
+
+    #close-cart {
+
+        width: 45px;
+
+        height: 45px;
+
+        font-size: 28px;
+
+        pointer-events: auto;
+
+        touch-action: manipulation;
+
+        position: relative;
+
+        z-index: 30;
+    }
+
+
+    /* ======================================
+       MOBILE CART ITEMS
+    ====================================== */
+
+    .cart-item {
+
+        gap: 10px;
+    }
+
+
+    .cart-item img,
+    .cart-food-image {
+
+        width: 65px;
+
+        height: 65px;
+    }
+
+
+    .cart-item-details h4 {
+
+        font-size: 15px;
+    }
+
+
+    .quantity-controls button {
+
+        width: 40px;
+
+        height: 40px;
+    }
+
+
+    .remove-btn {
+
+        min-height: 40px;
+
+        padding:
+            8px 12px;
     }
 
 }
