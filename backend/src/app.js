@@ -24,7 +24,7 @@ const __dirname = path.dirname(__filename);
 
 const frontendPath = path.join(
     __dirname,
-    "../../frontend"
+    "../.."
 );
 
 const uploadsPath = path.join(
@@ -56,7 +56,7 @@ const allowedOrigins = [
     "http://127.0.0.1:5500",
     "http://localhost:5000",
     "http://127.0.0.1:5000",
-    "https://oder-food-2.onrender.com"
+    "https://oder-food-3.onrender.com"
 ];
 
 app.use(
