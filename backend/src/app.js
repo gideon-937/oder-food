@@ -171,17 +171,6 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/cart", cartRoutes);
 
 
-// ======================================
-// API TEST
-// ======================================
-
-app.get("/", (req, res) => {
-
-    res.json({
-        message: "Hotel Food Ordering API Running..."
-    });
-
-});
 
 
 // ======================================
