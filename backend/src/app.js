@@ -41,10 +41,51 @@ app.use(
     helmet({
         crossOriginResourcePolicy: {
             policy: "cross-origin"
+        },
+
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+
+                scriptSrc: [
+                    "'self'"
+                ],
+
+                styleSrc: [
+                    "'self'",
+                    "'unsafe-inline'"
+                ],
+
+                imgSrc: [
+                    "'self'",
+                    "https://res.cloudinary.com"
+                ],
+
+                connectSrc: [
+                    "'self'",
+                    "https://oder-food-2.onrender.com"
+                ],
+
+                fontSrc: [
+                    "'self'",
+                    "data:"
+                ],
+
+                objectSrc: [
+                    "'none'"
+                ],
+
+                baseUri: [
+                    "'self'"
+                ],
+
+                frameAncestors: [
+                    "'self'"
+                ]
+            }
         }
     })
 );
-
 
 // ======================================
 // CORS
