@@ -12,6 +12,7 @@ import cartRoutes from "./routes/cart.route.js";
 import mpesaRoutes from "./routes/mpesa.route.js";
 
 const app = express();
+app.set("trust proxy", 1);
 
 
 // ======================================
