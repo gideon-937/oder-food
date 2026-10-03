@@ -12,7 +12,7 @@ import cartRoutes from "./routes/cart.route.js";
 import mpesaRoutes from "./routes/mpesa.route.js";
 
 const app = express();
-app.set("trust proxy", 1);
+
 
 
 // ======================================
@@ -56,7 +56,7 @@ const allowedOrigins = [
     "http://127.0.0.1:5500",
     "http://localhost:5000",
     "http://127.0.0.1:5000",
-    "https://oder-food-3.onrender.com"
+    "https://oder-food-2.onrender.com"
 ];
 
 app.use(
