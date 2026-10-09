@@ -8,6 +8,19 @@ const API_URL = "https://oder-food-2.onrender.com";
 console.log("MAIN SCRIPT.JS IS WORKING");
 
 // ======================================
+// REMOVE DUPLICATE CHECKOUT BUTTONS
+// ======================================
+
+// If the HTML contains multiple elements with the same checkout ID,
+// retain the first and remove the duplicates.
+document.querySelectorAll("#checkout-btn").forEach((button, index) => {
+    if (index > 0) {
+        button.remove();
+        console.warn("Removed duplicate #checkout-btn element.");
+    }
+});
+
+// ======================================
 // HTML ELEMENTS
 // ======================================
 
@@ -32,7 +45,6 @@ const customerNameInput = document.getElementById("customer-name");
 
 const CART_STORAGE_KEY = "shoppingCart";
 const PENDING_ORDER_KEY = "pendingFoodOrderId";
-const UNRESOLVED_ORDERS_KEY = "unresolvedFoodOrderIds";
 
 let shoppingCart = [];
 let currentOrderId = localStorage.getItem(PENDING_ORDER_KEY) || null;
@@ -55,17 +67,19 @@ try {
     );
 
     shoppingCart = Array.isArray(savedCart)
-        ? savedCart.filter(item =>
-            item &&
-            item.foodId &&
-            Number.isSafeInteger(Number(item.quantity)) &&
-            Number(item.quantity) >= 1
-        ).map(item => ({
-            ...item,
-            foodId: String(item.foodId),
-            quantity: Number(item.quantity),
-            price: Number(item.price) || 0
-        }))
+        ? savedCart
+            .filter(item =>
+                item &&
+                item.foodId &&
+                Number.isSafeInteger(Number(item.quantity)) &&
+                Number(item.quantity) >= 1
+            )
+            .map(item => ({
+                ...item,
+                foodId: String(item.foodId),
+                quantity: Number(item.quantity),
+                price: Number(item.price) || 0
+            }))
         : [];
 } catch (error) {
     console.error("Could not restore shopping cart:", error);
@@ -87,7 +101,7 @@ function escapeHTML(value) {
 }
 
 // ======================================
-// SAVE CART AND PENDING ORDER
+// SAVE CART AND ORDER
 // ======================================
 
 function saveCart() {
@@ -102,35 +116,6 @@ function savePendingOrder(orderId) {
     } else {
         localStorage.removeItem(PENDING_ORDER_KEY);
     }
-}
-
-// Keep a record of old unresolved order IDs in this browser.
-// This does not change the payment status in the database.
-function archiveUnresolvedOrder(orderId) {
-    if (!orderId) return;
-
-    let history = [];
-
-    try {
-        history = JSON.parse(
-            localStorage.getItem(UNRESOLVED_ORDERS_KEY) || "[]"
-        );
-
-        if (!Array.isArray(history)) history = [];
-    } catch {
-        history = [];
-    }
-
-    const id = String(orderId);
-
-    if (!history.some(item => item && item.orderId === id)) {
-        history.push({
-            orderId: id,
-            archivedAt: new Date().toISOString()
-        });
-    }
-
-    localStorage.setItem(UNRESOLVED_ORDERS_KEY, JSON.stringify(history));
 }
 
 // ======================================
@@ -166,6 +151,17 @@ function getFoodsFromResponse(data) {
     if (Array.isArray(data.foods)) return data.foods;
     if (Array.isArray(data.data)) return data.data;
     return [];
+}
+
+// Accept the common response shapes used by payment-status endpoints.
+function getPaymentStatus(data) {
+    return String(
+        data?.paymentStatus ??
+        data?.order?.paymentStatus ??
+        data?.status ??
+        data?.order?.status ??
+        ""
+    ).trim().toLowerCase();
 }
 
 // ======================================
@@ -297,7 +293,7 @@ async function loadFoods() {
 }
 
 // ======================================
-// REFRESH STOCK FROM SERVER
+// REFRESH STOCK
 // ======================================
 
 async function refreshStock() {
@@ -495,11 +491,6 @@ function displayCart() {
         checkoutBtn.style.opacity = "0.5";
         checkoutBtn.style.cursor = "not-allowed";
 
-        // Do not hide the old payment status while an order is unresolved.
-        if (paymentBox) {
-            paymentBox.style.display = currentOrderId ? "block" : "none";
-        }
-
         return;
     }
 
@@ -609,8 +600,6 @@ function displayCart() {
         );
     });
 
-    // Allow preparing a basket while an older order is unresolved.
-    // The checkout handler still checks the unresolved order before proceeding.
     checkoutBtn.disabled = !cartCanBeOrdered;
     checkoutBtn.style.opacity = checkoutBtn.disabled ? "0.5" : "1";
     checkoutBtn.style.cursor = checkoutBtn.disabled ? "not-allowed" : "pointer";
@@ -713,7 +702,7 @@ function resetPaymentUI() {
     if (paymentStatusText) paymentStatusText.textContent = "";
 
     if (payBtn) {
-        payBtn.disabled = Boolean(currentOrderId);
+        payBtn.disabled = false;
         payBtn.textContent = currentOrderId
             ? "Check Payment Status"
             : "Pay Now";
@@ -723,7 +712,7 @@ function resetPaymentUI() {
 }
 
 // ======================================
-// STOP POLLING
+// STOP PAYMENT POLLING
 // ======================================
 
 function stopPaymentPolling() {
@@ -752,7 +741,7 @@ if (closeCart && cart) {
         if (currentOrderId && paymentBox) {
             paymentBox.style.display = "block";
             showPaymentMessage(
-                "You have an order awaiting payment confirmation. Check its status before trying again."
+                "An order is awaiting payment confirmation. Check its status before paying again."
             );
         } else {
             resetPaymentUI();
@@ -809,38 +798,22 @@ function validateCartAgainstStock() {
 if (checkoutBtn) {
     checkoutBtn.addEventListener("click", async () => {
         if (paymentRequestInProgress || statusCheckInProgress) {
-            alert("Please wait for the current payment check to finish.");
+            showPaymentMessage("Please wait for the current request to finish.");
             return;
         }
 
+        // Never abandon an unresolved order to create another order.
         if (currentOrderId) {
             if (paymentBox) paymentBox.style.display = "block";
 
-            showPaymentMessage("Checking the previous order before checkout...");
-
             await checkCurrentPaymentStatus();
 
-            // If still pending, ask before allowing a separate order.
             if (currentOrderId) {
-                const confirmed = confirm(
-                    "Your previous order is still unresolved. Its payment may still succeed. " +
-                    "Creating another order could result in two payments. " +
-                    "Do you want to continue with a separate order?"
-                );
-
-                if (!confirmed) return;
-
-                archiveUnresolvedOrder(currentOrderId);
-                stopPaymentPolling();
-                savePendingOrder(null);
-
-                paymentRequestInProgress = false;
-                statusCheckInProgress = false;
-
                 showPaymentMessage(
-                    "The earlier order remains unresolved. You are preparing a separate order. " +
-                    "Check the earlier transaction before paying again."
+                    "The previous payment is not confirmed as failed yet. " +
+                    "Check its status before creating another order."
                 );
+                return;
             }
         }
 
@@ -857,6 +830,11 @@ if (checkoutBtn) {
 
             if (paymentBox) paymentBox.style.display = "block";
             if (paymentStatus) paymentStatus.style.display = "none";
+
+            if (payBtn) {
+                payBtn.disabled = false;
+                payBtn.textContent = "Pay Now";
+            }
 
             if (customerNameInput) customerNameInput.focus();
         } catch (error) {
@@ -912,15 +890,15 @@ async function handlePaymentSuccess() {
 async function handlePaymentFailure(reason) {
     stopPaymentPolling();
 
-    // Only call this when the server has confirmed Failed.
-    // The backend is responsible for releasing the reserved stock.
+    // Clear the browser's pending ID only after the backend confirms Failed.
     savePendingOrder(null);
 
     paymentRequestInProgress = false;
     statusCheckInProgress = false;
 
     showPaymentMessage(
-        reason || "Payment failed or was cancelled. Refresh stock before trying again."
+        (reason || "Payment failed.") +
+        " You can try checkout again after stock has refreshed."
     );
 
     if (payBtn) {
@@ -943,13 +921,14 @@ async function handlePaymentFailure(reason) {
 
 async function checkCurrentPaymentStatus() {
     if (!currentOrderId) {
-        showPaymentMessage("No pending order was found. Please check your basket.");
+        showPaymentMessage("No pending order was found. You can continue checkout.");
         return;
     }
 
     if (statusCheckInProgress) return;
 
     statusCheckInProgress = true;
+
     const orderIdBeingChecked = String(currentOrderId);
 
     if (payBtn) {
@@ -964,37 +943,44 @@ async function checkCurrentPaymentStatus() {
             `${API_URL}/api/orders/payment-status/${encodeURIComponent(orderIdBeingChecked)}`
         );
 
-        // Do not let an old request alter a newer order's UI.
         if (String(currentOrderId) !== orderIdBeingChecked) return;
 
-        if (data.paymentStatus === "Paid") {
+        const status = getPaymentStatus(data);
+
+        if (status === "paid") {
             await handlePaymentSuccess();
             return;
         }
 
-        if (data.paymentStatus === "Failed") {
-            await handlePaymentFailure(data.failureReason);
+        if (status === "failed" || status === "cancelled") {
+            await handlePaymentFailure(
+                data.failureReason ||
+                data.order?.failureReason ||
+                "Payment failed or was cancelled."
+            );
             return;
         }
 
+        if (
+            status !== "pending" &&
+            status !== "processing" &&
+            status !== ""
+        ) {
+            console.warn("Unrecognized payment status:", data);
+        }
+
         showPaymentMessage(
-            "Your payment is still pending. We will continue checking the existing order."
+            "Payment is not confirmed yet. We will check the existing order. " +
+            "Do not make another payment while its outcome is unknown."
         );
 
-        if (payBtn) {
-            payBtn.disabled = true;
-            payBtn.textContent = "Awaiting Confirmation";
-        }
-
-        if (!paymentPollingInterval) {
-            startPaymentPolling(orderIdBeingChecked);
-        }
+        startPaymentPolling(orderIdBeingChecked);
     } catch (error) {
         console.error("Payment status check failed:", error);
 
         showPaymentMessage(
-            "Could not confirm the payment status. Please check again shortly. " +
-            "Do not assume the payment failed."
+            "We could not retrieve your payment status. Check your connection " +
+            "and try Check Payment Status again. Do not assume payment failed."
         );
 
         if (payBtn) {
@@ -1012,7 +998,7 @@ async function checkCurrentPaymentStatus() {
 
 if (payBtn) {
     payBtn.addEventListener("click", async () => {
-        // Never issue another STK Push for the same pending order.
+        // Existing order? Check its status; do not send another STK Push.
         if (currentOrderId) {
             await checkCurrentPaymentStatus();
             return;
@@ -1074,12 +1060,11 @@ if (payBtn) {
 
             if (!order._id) {
                 throw new Error(
-                    "The server did not return an order ID. Check your orders before trying again."
+                    "The server did not return an order ID. Verify the order before trying again."
                 );
             }
 
-            // Persist the order immediately. If the next request times out,
-            // the customer must check this order instead of creating another.
+            // Save the order ID immediately in case the next request times out.
             savePendingOrder(order._id);
 
             showPaymentMessage("Order created. Preparing your M-Pesa request...");
@@ -1094,7 +1079,7 @@ if (payBtn) {
 
             if (!Number.isFinite(totalPrice) || totalPrice <= 0) {
                 throw new Error(
-                    "The server returned an invalid order total. Check this order's status before trying again."
+                    "The server returned an invalid order total. Check this order's status before retrying."
                 );
             }
 
@@ -1119,7 +1104,7 @@ if (payBtn) {
             }
 
             showPaymentMessage(
-                "Please check your phone and enter your M-Pesa PIN. Waiting for confirmation..."
+                "Check your phone for the M-Pesa PIN prompt. Waiting for confirmation..."
             );
 
             startPaymentPolling(currentOrderId);
@@ -1127,30 +1112,26 @@ if (payBtn) {
             console.error("PAYMENT ERROR:", error);
 
             showPaymentMessage(
-                error.message ||
-                "An error occurred. Check the existing order's payment status before trying again."
+                `${error.message || "An error occurred."} ` +
+                (
+                    currentOrderId
+                        ? "Check the existing order's status before trying again."
+                        : "You can correct the issue and try checkout again."
+                )
             );
 
             if (currentOrderId) {
-                // The request might have reached the server even if the browser
-                // did not receive its response. Do not automatically retry STK.
+                // The STK request may have reached Safaricom despite a browser error.
                 payBtn.disabled = false;
                 payBtn.textContent = "Check Payment Status";
 
-                if (!paymentPollingInterval) {
-                    startPaymentPolling(currentOrderId);
-                }
+                startPaymentPolling(currentOrderId);
             } else {
-                paymentRequestInProgress = false;
                 payBtn.disabled = false;
                 payBtn.textContent = "Pay Now";
             }
         } finally {
-            // Do not mark the request as available while an order still
-            // exists and may have a payment request in progress.
-            if (!currentOrderId) {
-                paymentRequestInProgress = false;
-            }
+            paymentRequestInProgress = false;
         }
     });
 }
@@ -1164,10 +1145,10 @@ function startPaymentPolling(orderId) {
 
     const id = String(orderId);
 
-    // Avoid creating duplicate polling loops for the same order.
     if (paymentPollingInterval && paymentPollingOrderId === id) return;
 
     stopPaymentPolling();
+
     paymentPollingOrderId = id;
 
     let attempts = 0;
@@ -1180,8 +1161,11 @@ function startPaymentPolling(orderId) {
         payBtn.textContent = "Awaiting Confirmation";
     }
 
+    showPaymentMessage("Waiting for M-Pesa payment confirmation...");
+
     paymentPollingInterval = setInterval(async () => {
         if (requestRunning) return;
+
         if (String(currentOrderId) !== id) {
             stopPaymentPolling();
             return;
@@ -1197,56 +1181,60 @@ function startPaymentPolling(orderId) {
 
             if (String(currentOrderId) !== id) return;
 
-            if (data.paymentStatus === "Paid") {
+            const status = getPaymentStatus(data);
+
+            if (status === "paid") {
                 stopPaymentPolling();
                 await handlePaymentSuccess();
                 return;
             }
 
-            if (data.paymentStatus === "Failed") {
-                stopPaymentPolling();
-                await handlePaymentFailure(data.failureReason);
-                return;
-            }
-
-            if (attempts >= maxAttempts) {
+            if (status === "failed" || status === "cancelled") {
                 stopPaymentPolling();
 
-                showPaymentMessage(
-                    "Payment confirmation is taking longer than expected. " +
-                    "Check your M-Pesa messages and click Check Payment Status. " +
-                    "Do not assume the payment failed."
+                await handlePaymentFailure(
+                    data.failureReason ||
+                    data.order?.failureReason ||
+                    "Payment failed or was cancelled."
                 );
-
-                if (payBtn) {
-                    payBtn.disabled = false;
-                    payBtn.textContent = "Check Payment Status";
-                }
-
-                paymentRequestInProgress = false;
                 return;
             }
 
-            showPaymentMessage("Waiting for M-Pesa payment confirmation...");
+            showPaymentMessage(
+                "Waiting for M-Pesa confirmation. " +
+                "If this takes too long, you can check the status again."
+            );
         } catch (error) {
             console.error("Payment status polling error:", error);
 
-            if (attempts >= maxAttempts) {
-                stopPaymentPolling();
-
-                showPaymentMessage(
-                    "We could not confirm your payment yet. Check the status again before paying again."
-                );
-
-                if (payBtn) {
-                    payBtn.disabled = false;
-                    payBtn.textContent = "Check Payment Status";
-                }
-
-                paymentRequestInProgress = false;
-            }
+            showPaymentMessage(
+                "We temporarily could not check your payment status. " +
+                "Your order is saved; do not pay again until its status is confirmed."
+            );
         } finally {
             requestRunning = false;
+        }
+
+        // This timeout runs after both successful and failed status requests.
+        // A temporary network error cannot keep polling forever.
+        if (
+            attempts >= maxAttempts &&
+            String(currentOrderId) === id
+        ) {
+            stopPaymentPolling();
+
+            showPaymentMessage(
+                "Confirmation is taking longer than expected. " +
+                "Check your M-Pesa messages, then click Check Payment Status. " +
+                "The payment has NOT been assumed to have failed."
+            );
+
+            if (payBtn) {
+                payBtn.disabled = false;
+                payBtn.textContent = "Check Payment Status";
+            }
+
+            paymentRequestInProgress = false;
         }
     }, intervalMs);
 }
@@ -1258,7 +1246,7 @@ function startPaymentPolling(orderId) {
 displayCart();
 
 loadFoods().catch(() => {
-    // Error is already logged and displayed by loadFoods().
+    // The loading error is already logged and displayed.
 });
 
 if (currentOrderId) {
