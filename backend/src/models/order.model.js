@@ -19,6 +19,13 @@ const orderSchema = new mongoose.Schema({
 
     items: [
         {
+            // Links the order item to the actual food in the database
+            foodId: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "Food",
+                required: true
+            },
+
             name: {
                 type: String,
                 required: true
@@ -26,17 +33,27 @@ const orderSchema = new mongoose.Schema({
 
             quantity: {
                 type: Number,
-                required: true
+                required: true,
+                min: 1,
+                validate: {
+                    validator: Number.isSafeInteger,
+                    message: "Quantity must be a whole number."
+                }
             },
 
             price: {
                 type: Number,
-                required: true
+                required: true,
+                min: 0
             }
         }
     ],
 
-    totalPrice: Number,
+    totalPrice: {
+        type: Number,
+        required: true,
+        min: 0
+    },
 
     checkoutRequestId: {
         type: String
@@ -57,6 +74,14 @@ const orderSchema = new mongoose.Schema({
     transactionDate: String,
 
     failureReason: String,
+
+    // True when stock has been reserved for a pending payment.
+    // Successful payments consume the reserved stock.
+    // Failed payments should release it exactly once.
+    stockReserved: {
+        type: Boolean,
+        default: false
+    },
 
     paymentStatus: {
         type: String,
