@@ -1,8 +1,7 @@
 
-
-// ======================================
-// API CONFIGURATION
-// ======================================
+ // ======================================
+ // API CONFIGURATION
+ // ======================================
 
 const API_URL = "https://oder-food-2.onrender.com";
 
@@ -33,6 +32,7 @@ const customerNameInput = document.getElementById("customer-name");
 
 const CART_STORAGE_KEY = "shoppingCart";
 const PENDING_ORDER_KEY = "pendingFoodOrderId";
+const UNRESOLVED_ORDERS_KEY = "unresolvedFoodOrderIds";
 
 let shoppingCart = [];
 let currentOrderId = localStorage.getItem(PENDING_ORDER_KEY) || null;
@@ -41,6 +41,7 @@ let paymentPollingInterval = null;
 let paymentRequestInProgress = false;
 let statusCheckInProgress = false;
 let stockRefreshInProgress = false;
+let paymentPollingOrderId = null;
 
 const foodStockMap = new Map();
 
@@ -90,10 +91,7 @@ function escapeHTML(value) {
 // ======================================
 
 function saveCart() {
-    localStorage.setItem(
-        CART_STORAGE_KEY,
-        JSON.stringify(shoppingCart)
-    );
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(shoppingCart));
 }
 
 function savePendingOrder(orderId) {
@@ -104,6 +102,35 @@ function savePendingOrder(orderId) {
     } else {
         localStorage.removeItem(PENDING_ORDER_KEY);
     }
+}
+
+// Keep a record of old unresolved order IDs in this browser.
+// This does not change the payment status in the database.
+function archiveUnresolvedOrder(orderId) {
+    if (!orderId) return;
+
+    let history = [];
+
+    try {
+        history = JSON.parse(
+            localStorage.getItem(UNRESOLVED_ORDERS_KEY) || "[]"
+        );
+
+        if (!Array.isArray(history)) history = [];
+    } catch {
+        history = [];
+    }
+
+    const id = String(orderId);
+
+    if (!history.some(item => item && item.orderId === id)) {
+        history.push({
+            orderId: id,
+            archivedAt: new Date().toISOString()
+        });
+    }
+
+    localStorage.setItem(UNRESOLVED_ORDERS_KEY, JSON.stringify(history));
 }
 
 // ======================================
@@ -167,13 +194,8 @@ function getStock(foodId) {
 }
 
 function getStockMessage(stock) {
-    if (stock === null) {
-        return "Stock information unavailable";
-    }
-
-    if (stock === 0) {
-        return "Out of stock";
-    }
+    if (stock === null) return "Stock information unavailable";
+    if (stock === 0) return "Out of stock";
 
     return `${stock} ${stock === 1 ? "unit" : "units"} available`;
 }
@@ -183,12 +205,10 @@ function getFood(foodId) {
 }
 
 function isFoodOrderable(food) {
-    return Boolean(
-        food &&
-        food.available !== false &&
-        getStock(food._id) !== null &&
-        getStock(food._id) > 0
-    );
+    if (!food || food.available === false) return false;
+
+    const stock = getStock(food._id);
+    return stock !== null && stock > 0;
 }
 
 function syncCartStock() {
@@ -262,7 +282,6 @@ async function loadFoods() {
         displayCart();
 
         return foods;
-
     } catch (error) {
         console.error("Food loading error:", error);
 
@@ -282,12 +301,8 @@ async function loadFoods() {
 // ======================================
 
 async function refreshStock() {
-    if (stockRefreshInProgress) {
-        // Avoid overlapping refreshes. Make a fresh request if necessary
-        // by calling refreshStock again after this request finishes.
-        while (stockRefreshInProgress) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-        }
+    while (stockRefreshInProgress) {
+        await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     stockRefreshInProgress = true;
@@ -309,7 +324,6 @@ async function refreshStock() {
         displayCart();
 
         return foods;
-
     } finally {
         stockRefreshInProgress = false;
     }
@@ -323,8 +337,7 @@ function displayFoods(foods) {
     if (!foodContainer) return;
 
     if (!foods || foods.length === 0) {
-        foodContainer.innerHTML =
-            "<p>No food available at the moment.</p>";
+        foodContainer.innerHTML = "<p>No food available at the moment.</p>";
         return;
     }
 
@@ -336,11 +349,10 @@ function displayFoods(foods) {
         const stock = getStock(foodId);
         const available = food.available !== false;
         const canOrder = available && stock !== null && stock > 0;
+        const price = Number(food.price) || 0;
 
         const foodCard = document.createElement("div");
         foodCard.className = "hero";
-
-        const price = Number(food.price) || 0;
 
         foodCard.innerHTML = `
             ${
@@ -355,12 +367,8 @@ function displayFoods(foods) {
                     : `<div class="no-image">No Image</div>`
             }
 
-            <h1 class="price">
-                KSh ${price.toLocaleString()}
-            </h1>
-
+            <h1 class="price">KSh ${price.toLocaleString()}</h1>
             <p>${escapeHTML(food.name)}</p>
-
             <p>${escapeHTML(food.description || "")}</p>
 
             ${
@@ -372,10 +380,7 @@ function displayFoods(foods) {
             <p
                 class="remaining-stock"
                 data-stock-id="${escapeHTML(foodId)}"
-                style="
-                    font-weight:bold;
-                    color:${canOrder ? "#237a36" : "#c62828"};
-                "
+                style="font-weight:bold;color:${canOrder ? "#237a36" : "#c62828"}"
             >
                 ${
                     !available
@@ -455,7 +460,6 @@ function addFoodToCart(foodId) {
 
         existing.quantity++;
         existing.stockLimit = stock;
-
     } else {
         shoppingCart.push({
             foodId: String(food._id),
@@ -478,9 +482,7 @@ function addFoodToCart(foodId) {
 // ======================================
 
 function displayCart() {
-    if (!cartItems || !cartTotal || !cartCount || !checkoutBtn) {
-        return;
-    }
+    if (!cartItems || !cartTotal || !cartCount || !checkoutBtn) return;
 
     cartItems.innerHTML = "";
 
@@ -493,7 +495,10 @@ function displayCart() {
         checkoutBtn.style.opacity = "0.5";
         checkoutBtn.style.cursor = "not-allowed";
 
-        if (paymentBox) paymentBox.style.display = "none";
+        // Do not hide the old payment status while an order is unresolved.
+        if (paymentBox) {
+            paymentBox.style.display = currentOrderId ? "block" : "none";
+        }
 
         return;
     }
@@ -513,11 +518,8 @@ function displayCart() {
         total += itemTotal;
         count += quantity;
 
-        const quantityAtLimit =
-            stock !== null && quantity >= stock;
-
-        const exceedsStock =
-            stock === null || quantity > stock;
+        const quantityAtLimit = stock !== null && quantity >= stock;
+        const exceedsStock = stock === null || quantity > stock;
 
         const cartItem = document.createElement("div");
         cartItem.className = "cart-item";
@@ -536,15 +538,11 @@ function displayCart() {
 
             <div class="cart-item-details">
                 <h4>${escapeHTML(item.name)}</h4>
-
                 <p>KSh ${price.toLocaleString()}</p>
 
                 <p
                     class="cart-stock-message"
-                    style="
-                        font-size:13px;
-                        color:${available && !exceedsStock ? "#237a36" : "#c62828"};
-                    "
+                    style="font-size:13px;color:${available && !exceedsStock ? "#237a36" : "#c62828"}"
                 >
                     ${
                         !available
@@ -576,23 +574,17 @@ function displayCart() {
 
                 ${
                     exceedsStock
-                        ? `<p style="color:#c62828">
-                            Please reduce the quantity to the available stock.
-                           </p>`
+                        ? `<p style="color:#c62828">Please reduce the quantity to the available stock.</p>`
                         : ""
                 }
 
-                <p>
-                    Subtotal: KSh ${itemTotal.toLocaleString()}
-                </p>
+                <p>Subtotal: KSh ${itemTotal.toLocaleString()}</p>
 
                 <button
                     type="button"
                     class="remove-btn"
                     data-index="${index}"
-                >
-                    Remove
-                </button>
+                >Remove</button>
             </div>
         `;
 
@@ -617,12 +609,11 @@ function displayCart() {
         );
     });
 
-    // An existing pending order must be checked, not duplicated.
-    checkoutBtn.disabled = !cartCanBeOrdered || Boolean(currentOrderId);
+    // Allow preparing a basket while an older order is unresolved.
+    // The checkout handler still checks the unresolved order before proceeding.
+    checkoutBtn.disabled = !cartCanBeOrdered;
     checkoutBtn.style.opacity = checkoutBtn.disabled ? "0.5" : "1";
-    checkoutBtn.style.cursor = checkoutBtn.disabled
-        ? "not-allowed"
-        : "pointer";
+    checkoutBtn.style.cursor = checkoutBtn.disabled ? "not-allowed" : "pointer";
 
     // INCREASE QUANTITY
     cartItems.querySelectorAll(".increase-btn").forEach(button => {
@@ -662,7 +653,6 @@ function displayCart() {
 
                 saveCart();
                 displayCart();
-
             } catch (error) {
                 console.error("Quantity update error:", error);
                 alert("Unable to refresh stock. Please try again.");
@@ -710,17 +700,15 @@ function displayCart() {
 // ======================================
 
 function showPaymentMessage(message) {
-    if (paymentStatus) {
-        paymentStatus.style.display = "block";
-    }
-
-    if (paymentStatusText) {
-        paymentStatusText.textContent = message;
-    }
+    if (paymentStatus) paymentStatus.style.display = "block";
+    if (paymentStatusText) paymentStatusText.textContent = message;
 }
 
 function resetPaymentUI() {
-    if (paymentBox) paymentBox.style.display = "none";
+    if (paymentBox) {
+        paymentBox.style.display = currentOrderId ? "block" : "none";
+    }
+
     if (paymentStatus) paymentStatus.style.display = "none";
     if (paymentStatusText) paymentStatusText.textContent = "";
 
@@ -732,6 +720,19 @@ function resetPaymentUI() {
     }
 
     displayCart();
+}
+
+// ======================================
+// STOP POLLING
+// ======================================
+
+function stopPaymentPolling() {
+    if (paymentPollingInterval) {
+        clearInterval(paymentPollingInterval);
+        paymentPollingInterval = null;
+    }
+
+    paymentPollingOrderId = null;
 }
 
 // ======================================
@@ -748,7 +749,6 @@ if (closeCart && cart) {
     closeCart.addEventListener("click", () => {
         cart.classList.remove("active");
 
-        // Do not discard an order when closing the cart.
         if (currentOrderId && paymentBox) {
             paymentBox.style.display = "block";
             showPaymentMessage(
@@ -774,9 +774,7 @@ function validateCartAgainstStock() {
         const stock = getStock(item.foodId);
 
         if (!food) {
-            throw new Error(
-                `${item.name} could not be found. Refresh your basket.`
-            );
+            throw new Error(`${item.name} could not be found. Refresh your basket.`);
         }
 
         if (food.available === false) {
@@ -784,9 +782,7 @@ function validateCartAgainstStock() {
         }
 
         if (stock === null) {
-            throw new Error(
-                `Stock for ${item.name} could not be confirmed.`
-            );
+            throw new Error(`Stock for ${item.name} could not be confirmed.`);
         }
 
         if (
@@ -812,18 +808,44 @@ function validateCartAgainstStock() {
 
 if (checkoutBtn) {
     checkoutBtn.addEventListener("click", async () => {
-        if (currentOrderId) {
-            if (paymentBox) paymentBox.style.display = "block";
-
-            showPaymentMessage(
-                "You already have an order awaiting payment confirmation. Check its status before creating another order."
-            );
-
+        if (paymentRequestInProgress || statusCheckInProgress) {
+            alert("Please wait for the current payment check to finish.");
             return;
         }
 
+        if (currentOrderId) {
+            if (paymentBox) paymentBox.style.display = "block";
+
+            showPaymentMessage("Checking the previous order before checkout...");
+
+            await checkCurrentPaymentStatus();
+
+            // If still pending, ask before allowing a separate order.
+            if (currentOrderId) {
+                const confirmed = confirm(
+                    "Your previous order is still unresolved. Its payment may still succeed. " +
+                    "Creating another order could result in two payments. " +
+                    "Do you want to continue with a separate order?"
+                );
+
+                if (!confirmed) return;
+
+                archiveUnresolvedOrder(currentOrderId);
+                stopPaymentPolling();
+                savePendingOrder(null);
+
+                paymentRequestInProgress = false;
+                statusCheckInProgress = false;
+
+                showPaymentMessage(
+                    "The earlier order remains unresolved. You are preparing a separate order. " +
+                    "Check the earlier transaction before paying again."
+                );
+            }
+        }
+
         if (shoppingCart.length === 0) {
-            alert("Your shopping basket is empty.");
+            alert("Your shopping basket is empty. Add food before checkout.");
             return;
         }
 
@@ -837,7 +859,6 @@ if (checkoutBtn) {
             if (paymentStatus) paymentStatus.style.display = "none";
 
             if (customerNameInput) customerNameInput.focus();
-
         } catch (error) {
             console.error("Checkout stock check error:", error);
             alert(error.message || "Could not verify food stock.");
@@ -852,10 +873,7 @@ if (checkoutBtn) {
 // ======================================
 
 async function handlePaymentSuccess() {
-    if (paymentPollingInterval) {
-        clearInterval(paymentPollingInterval);
-        paymentPollingInterval = null;
-    }
+    stopPaymentPolling();
 
     shoppingCart = [];
     saveCart();
@@ -892,21 +910,17 @@ async function handlePaymentSuccess() {
 // ======================================
 
 async function handlePaymentFailure(reason) {
-    if (paymentPollingInterval) {
-        clearInterval(paymentPollingInterval);
-        paymentPollingInterval = null;
-    }
+    stopPaymentPolling();
 
-    // The backend must have restored the stock before it reports Failed.
-    // The browser never restores stock itself.
+    // Only call this when the server has confirmed Failed.
+    // The backend is responsible for releasing the reserved stock.
     savePendingOrder(null);
 
     paymentRequestInProgress = false;
     statusCheckInProgress = false;
 
     showPaymentMessage(
-        reason ||
-        "Payment failed or was cancelled. Refresh stock before trying again."
+        reason || "Payment failed or was cancelled. Refresh stock before trying again."
     );
 
     if (payBtn) {
@@ -929,15 +943,14 @@ async function handlePaymentFailure(reason) {
 
 async function checkCurrentPaymentStatus() {
     if (!currentOrderId) {
-        showPaymentMessage(
-            "No pending order was found. Please check your basket."
-        );
+        showPaymentMessage("No pending order was found. Please check your basket.");
         return;
     }
 
     if (statusCheckInProgress) return;
 
     statusCheckInProgress = true;
+    const orderIdBeingChecked = String(currentOrderId);
 
     if (payBtn) {
         payBtn.disabled = true;
@@ -948,8 +961,11 @@ async function checkCurrentPaymentStatus() {
 
     try {
         const data = await fetchJSON(
-            `${API_URL}/api/orders/payment-status/${encodeURIComponent(currentOrderId)}`
+            `${API_URL}/api/orders/payment-status/${encodeURIComponent(orderIdBeingChecked)}`
         );
+
+        // Do not let an old request alter a newer order's UI.
+        if (String(currentOrderId) !== orderIdBeingChecked) return;
 
         if (data.paymentStatus === "Paid") {
             await handlePaymentSuccess();
@@ -961,7 +977,6 @@ async function checkCurrentPaymentStatus() {
             return;
         }
 
-        // Pending orders are never submitted a second time here.
         showPaymentMessage(
             "Your payment is still pending. We will continue checking the existing order."
         );
@@ -972,21 +987,20 @@ async function checkCurrentPaymentStatus() {
         }
 
         if (!paymentPollingInterval) {
-            startPaymentPolling(currentOrderId);
+            startPaymentPolling(orderIdBeingChecked);
         }
-
     } catch (error) {
         console.error("Payment status check failed:", error);
 
         showPaymentMessage(
-            "Could not confirm the payment status. Please check again shortly. Do not place another order."
+            "Could not confirm the payment status. Please check again shortly. " +
+            "Do not assume the payment failed."
         );
 
         if (payBtn) {
             payBtn.disabled = false;
             payBtn.textContent = "Check Payment Status";
         }
-
     } finally {
         statusCheckInProgress = false;
     }
@@ -998,18 +1012,15 @@ async function checkCurrentPaymentStatus() {
 
 if (payBtn) {
     payBtn.addEventListener("click", async () => {
-        // If an order already exists, this button checks it.
-        // It must never silently create another order.
+        // Never issue another STK Push for the same pending order.
         if (currentOrderId) {
             await checkCurrentPaymentStatus();
             return;
         }
 
-        if (paymentRequestInProgress) return;
+        if (paymentRequestInProgress || statusCheckInProgress) return;
 
-        const customerName =
-            customerNameInput?.value.trim() || "";
-
+        const customerName = customerNameInput?.value.trim() || "";
         const phone = phoneInput?.value.trim() || "";
 
         if (!customerName) {
@@ -1019,9 +1030,7 @@ if (payBtn) {
         }
 
         if (!/^07\d{8}$/.test(phone)) {
-            alert(
-                "Enter a valid M-Pesa number starting with 07, e.g. 0712345678."
-            );
+            alert("Enter a valid M-Pesa number starting with 07, e.g. 0712345678.");
             phoneInput?.focus();
             return;
         }
@@ -1035,15 +1044,12 @@ if (payBtn) {
 
         paymentRequestInProgress = true;
 
-        if (payBtn) {
-            payBtn.disabled = true;
-            payBtn.textContent = "Processing...";
-        }
+        payBtn.disabled = true;
+        payBtn.textContent = "Processing...";
 
         showPaymentMessage("Checking food stock...");
 
         try {
-            // Refresh the menu immediately before creating the order.
             await refreshStock();
             validateCartAgainstStock();
 
@@ -1051,9 +1057,7 @@ if (payBtn) {
 
             const orderData = await fetchJSON(`${API_URL}/api/orders`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     customer: {
                         name: customerName,
@@ -1074,58 +1078,43 @@ if (payBtn) {
                 );
             }
 
-            // Save the order ID immediately so the customer can resume
-            // checking this order if the page reloads.
+            // Persist the order immediately. If the next request times out,
+            // the customer must check this order instead of creating another.
             savePendingOrder(order._id);
 
-            showPaymentMessage(
-                "Your order has been created and stock reserved. Updating the menu..."
-            );
+            showPaymentMessage("Order created. Preparing your M-Pesa request...");
 
-            // Refresh failure must not prevent us from attempting the
-            // payment request for the order already created.
             try {
                 await refreshStock();
             } catch (refreshError) {
-                console.error(
-                    "Stock refresh after reservation failed:",
-                    refreshError
-                );
+                console.error("Stock refresh after reservation failed:", refreshError);
             }
 
             const totalPrice = Number(order.totalPrice);
 
             if (!Number.isFinite(totalPrice) || totalPrice <= 0) {
                 throw new Error(
-                    "The server returned an invalid order total. Do not create another order; check this order's status."
+                    "The server returned an invalid order total. Check this order's status before trying again."
                 );
             }
 
             showPaymentMessage(
-                "Sending the M-Pesa payment request to your phone..."
+                "Sending the M-Pesa request. Check your phone for the PIN prompt..."
             );
 
-            // If this request times out, the payment request might still
-            // have reached Safaricom. Do not automatically submit again.
-            const paymentData = await fetchJSON(
-                `${API_URL}/api/mpesa/stkpush`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        phone: mpesaPhone,
-                        amount: totalPrice,
-                        orderId: currentOrderId
-                    })
-                }
-            );
+            const paymentData = await fetchJSON(`${API_URL}/api/mpesa/stkpush`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    phone: mpesaPhone,
+                    amount: totalPrice,
+                    orderId: currentOrderId
+                })
+            });
 
             if (paymentData.success === false) {
                 throw new Error(
-                    paymentData.message ||
-                    "The payment request was not confirmed."
+                    paymentData.message || "The payment request was not confirmed."
                 );
             }
 
@@ -1134,37 +1123,33 @@ if (payBtn) {
             );
 
             startPaymentPolling(currentOrderId);
-
         } catch (error) {
             console.error("PAYMENT ERROR:", error);
 
             showPaymentMessage(
                 error.message ||
-                "An error occurred while processing your order."
+                "An error occurred. Check the existing order's payment status before trying again."
             );
 
             if (currentOrderId) {
-                // Order creation or payment may already have reached
-                // the backend. Check this order instead of creating
-                // another order or issuing another STK request.
-                paymentRequestInProgress = false;
-
-                if (payBtn) {
-                    payBtn.disabled = false;
-                    payBtn.textContent = "Check Payment Status";
-                }
+                // The request might have reached the server even if the browser
+                // did not receive its response. Do not automatically retry STK.
+                payBtn.disabled = false;
+                payBtn.textContent = "Check Payment Status";
 
                 if (!paymentPollingInterval) {
                     startPaymentPolling(currentOrderId);
                 }
-
             } else {
                 paymentRequestInProgress = false;
-
-                if (payBtn) {
-                    payBtn.disabled = false;
-                    payBtn.textContent = "Pay Now";
-                }
+                payBtn.disabled = false;
+                payBtn.textContent = "Pay Now";
+            }
+        } finally {
+            // Do not mark the request as available while an order still
+            // exists and may have a payment request in progress.
+            if (!currentOrderId) {
+                paymentRequestInProgress = false;
             }
         }
     });
@@ -1177,10 +1162,13 @@ if (payBtn) {
 function startPaymentPolling(orderId) {
     if (!orderId) return;
 
-    if (paymentPollingInterval) {
-        clearInterval(paymentPollingInterval);
-        paymentPollingInterval = null;
-    }
+    const id = String(orderId);
+
+    // Avoid creating duplicate polling loops for the same order.
+    if (paymentPollingInterval && paymentPollingOrderId === id) return;
+
+    stopPaymentPolling();
+    paymentPollingOrderId = id;
 
     let attempts = 0;
     const maxAttempts = 60;
@@ -1194,38 +1182,40 @@ function startPaymentPolling(orderId) {
 
     paymentPollingInterval = setInterval(async () => {
         if (requestRunning) return;
-        if (String(currentOrderId) !== String(orderId)) return;
+        if (String(currentOrderId) !== id) {
+            stopPaymentPolling();
+            return;
+        }
 
         requestRunning = true;
         attempts++;
 
         try {
             const data = await fetchJSON(
-                `${API_URL}/api/orders/payment-status/${encodeURIComponent(orderId)}`
+                `${API_URL}/api/orders/payment-status/${encodeURIComponent(id)}`
             );
 
-            if (data.paymentStatus === "Paid") {
-                clearInterval(paymentPollingInterval);
-                paymentPollingInterval = null;
+            if (String(currentOrderId) !== id) return;
 
+            if (data.paymentStatus === "Paid") {
+                stopPaymentPolling();
                 await handlePaymentSuccess();
                 return;
             }
 
             if (data.paymentStatus === "Failed") {
-                clearInterval(paymentPollingInterval);
-                paymentPollingInterval = null;
-
+                stopPaymentPolling();
                 await handlePaymentFailure(data.failureReason);
                 return;
             }
 
             if (attempts >= maxAttempts) {
-                clearInterval(paymentPollingInterval);
-                paymentPollingInterval = null;
+                stopPaymentPolling();
 
                 showPaymentMessage(
-                    "Payment confirmation is taking longer than expected. Check your M-Pesa messages, then click Check Payment Status. Do not place another order."
+                    "Payment confirmation is taking longer than expected. " +
+                    "Check your M-Pesa messages and click Check Payment Status. " +
+                    "Do not assume the payment failed."
                 );
 
                 if (payBtn) {
@@ -1237,19 +1227,15 @@ function startPaymentPolling(orderId) {
                 return;
             }
 
-            showPaymentMessage(
-                "Waiting for M-Pesa payment confirmation..."
-            );
-
+            showPaymentMessage("Waiting for M-Pesa payment confirmation...");
         } catch (error) {
             console.error("Payment status polling error:", error);
 
             if (attempts >= maxAttempts) {
-                clearInterval(paymentPollingInterval);
-                paymentPollingInterval = null;
+                stopPaymentPolling();
 
                 showPaymentMessage(
-                    "We could not confirm your payment yet. Check the status again before placing another order."
+                    "We could not confirm your payment yet. Check the status again before paying again."
                 );
 
                 if (payBtn) {
@@ -1259,7 +1245,6 @@ function startPaymentPolling(orderId) {
 
                 paymentRequestInProgress = false;
             }
-
         } finally {
             requestRunning = false;
         }
@@ -1273,10 +1258,9 @@ function startPaymentPolling(orderId) {
 displayCart();
 
 loadFoods().catch(() => {
-    // Error already displayed by loadFoods.
+    // Error is already logged and displayed by loadFoods().
 });
 
-// If a previous order was saved in this browser, resume checking it.
 if (currentOrderId) {
     if (paymentBox) paymentBox.style.display = "block";
 
