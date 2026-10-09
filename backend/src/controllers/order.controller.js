@@ -596,13 +596,44 @@ export const deleteOrder = async (req, res) => {
             });
         }
 
-        if (order.stockReserved === true) {
-            return res.status(409).json({
-                success: false,
-                message:
-                    "This order still has reserved food stock. Resolve its payment status before deleting it."
-            });
-        }
+       // Never delete an order whose payment outcome is unresolved.
+if (order.paymentStatus === "Pending") {
+    return res.status(409).json({
+        success: false,
+        message:
+            "This order has a pending payment. Verify its outcome before deleting it."
+    });
+}
+
+// Never delete a successful payment record.
+if (
+    order.paymentStatus === "Paid" ||
+    order.mpesaReceiptNumber
+) {
+    return res.status(409).json({
+        success: false,
+        message:
+            "This order has a successful payment record and cannot be deleted."
+    });
+}
+
+// Never delete an order while its stock is reserved.
+if (order.stockReserved === true) {
+    return res.status(409).json({
+        success: false,
+        message:
+            "This order still has reserved food stock. Resolve the reservation before deleting it."
+    });
+}
+
+// Only confirmed failed orders can be deleted.
+if (order.paymentStatus !== "Failed") {
+    return res.status(409).json({
+        success: false,
+        message:
+            "Only confirmed failed orders can be deleted."
+    });
+}
 
         await Order.findByIdAndDelete(id);
 
