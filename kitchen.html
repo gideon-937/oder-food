@@ -1,6 +1,7 @@
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,9 +13,7 @@
 
 <body>
 
-    <!-- ====================================== -->
     <!-- HEADER -->
-    <!-- ====================================== -->
 
     <header class="kitchen-header">
 
@@ -25,15 +24,15 @@
 
         <div class="header-actions">
 
-            <button id="refresh-btn">
+            <button type="button" id="refresh-btn">
                 🔄 Refresh
             </button>
 
-            <button id="print-btn">
+            <button type="button" id="print-btn">
                 🖨️ Print
             </button>
 
-            <button id="logout-btn">
+            <button type="button" id="logout-btn">
                 🚪 Logout
             </button>
 
@@ -42,154 +41,109 @@
     </header>
 
 
-    <!-- ====================================== -->
     <!-- DASHBOARD SUMMARY -->
-    <!-- ====================================== -->
 
     <section class="dashboard-summary">
 
         <div class="summary-card">
-
             <h3>Total Orders</h3>
-
-            <p id="total-orders">
-                0
-            </p>
-
+            <p id="total-orders">0</p>
         </div>
 
-
         <div class="summary-card">
-
             <h3>Paid Orders</h3>
-
-            <p id="paid-orders">
-                0
-            </p>
-
+            <p id="paid-orders">0</p>
         </div>
 
-
         <div class="summary-card">
-
             <h3>Preparing</h3>
-
-            <p id="processing-orders">
-                0
-            </p>
-
+            <p id="processing-orders">0</p>
         </div>
 
-
         <div class="summary-card">
-
             <h3>Ready</h3>
-
-            <p id="ready-orders">
-                0
-            </p>
-
+            <p id="ready-orders">0</p>
         </div>
 
     </section>
 
 
-    <!-- ====================================== -->
     <!-- ORDER FILTER -->
-    <!-- ====================================== -->
 
     <section class="filter-bar">
 
         <button
+            type="button"
             class="filter-btn active"
-            data-filter="all"
-        >
+            data-filter="all">
             All Orders
         </button>
 
-
         <button
+            type="button"
             class="filter-btn"
-            data-filter="Paid"
-        >
+            data-filter="Paid">
             Paid
         </button>
 
-
         <button
+            type="button"
             class="filter-btn"
-            data-filter="Processing"
-        >
+            data-filter="Processing">
             Processing
         </button>
 
-
         <button
+            type="button"
             class="filter-btn"
-            data-filter="Ready"
-        >
+            data-filter="Ready">
             Ready
         </button>
 
-
         <button
+            type="button"
             class="filter-btn"
-            data-filter="Delivered"
-        >
+            data-filter="Delivered">
             Delivered
         </button>
 
     </section>
 
 
-    <!-- ====================================== -->
     <!-- FOOD MANAGEMENT -->
-    <!-- ====================================== -->
 
     <section class="food-management">
-
-
-        <!-- FOOD MANAGEMENT HEADER -->
 
         <div class="food-management-header">
 
             <div>
-
-                <h2>
-                    🍔 Food Management
-                </h2>
+                <h2>🍔 Food Management</h2>
 
                 <p>
-                    Add and manage food available on the website.
+                    Add food, update prices, manage stock units,
+                    and control food availability.
                 </p>
-
             </div>
 
-
-            <button id="show-food-form-btn">
+            <button
+                type="button"
+                id="show-food-form-btn">
                 ➕ Add New Food
             </button>
 
         </div>
 
 
-        <!-- ====================================== -->
         <!-- FOOD FORM -->
-        <!-- ====================================== -->
 
         <div
             id="food-form-container"
             class="food-form-container"
-            style="display: none;"
-        >
+            style="display: none;">
 
-            <h3 id="food-form-title">
-                Add New Food
-            </h3>
-
+            <h3 id="food-form-title">Add New Food</h3>
 
             <form id="food-form">
-
 
                 <!-- FOOD NAME -->
 
@@ -203,8 +157,7 @@
                         type="text"
                         id="food-name"
                         placeholder="e.g. Chicken Burger"
-                        required
-                    >
+                        required>
 
                 </div>
 
@@ -220,8 +173,7 @@
                     <textarea
                         id="food-description"
                         placeholder="Describe the food"
-                        required
-                    ></textarea>
+                        required></textarea>
 
                 </div>
 
@@ -239,8 +191,33 @@
                         id="food-price"
                         placeholder="350"
                         min="0"
-                        required
-                    >
+                        step="0.01"
+                        required>
+
+                </div>
+
+
+                <!-- AVAILABLE STOCK UNITS -->
+
+                <div class="form-group">
+
+                    <label for="food-stock">
+                        Available Units
+                    </label>
+
+                    <input
+                        type="number"
+                        id="food-stock"
+                        placeholder="e.g. 20"
+                        min="0"
+                        step="1"
+                        value="0"
+                        required>
+
+                    <small>
+                        Enter the number of units currently in stock.
+                        Use 0 when no units remain.
+                    </small>
 
                 </div>
 
@@ -253,59 +230,26 @@
                         Category
                     </label>
 
-
-                    <select
-                        id="food-category"
-                        required
-                    >
+                    <select id="food-category" required>
 
                         <option value="">
                             Select Category
                         </option>
 
-
-                        <option value="Burger">
-                            Burger
-                        </option>
-
-
-                        <option value="Pizza">
-                            Pizza
-                        </option>
-
-
-                        <option value="Chicken">
-                            Chicken
-                        </option>
-
-
-                        <option value="Beef">
-                            Beef
-                        </option>
-
-
-                        <option value="Fish">
-                            Fish
-                        </option>
-
-
-                        <option value="Drinks">
-                            Drinks
-                        </option>
-
-
-                        <option value="Other">
-                            Other
-                        </option>
+                        <option value="Burger">Burger</option>
+                        <option value="Pizza">Pizza</option>
+                        <option value="Chicken">Chicken</option>
+                        <option value="Beef">Beef</option>
+                        <option value="Fish">Fish</option>
+                        <option value="Drinks">Drinks</option>
+                        <option value="Other">Other</option>
 
                     </select>
 
                 </div>
 
 
-                <!-- ====================================== -->
                 <!-- IMAGE UPLOAD -->
-                <!-- ====================================== -->
 
                 <div class="form-group">
 
@@ -313,13 +257,10 @@
                         Food Image
                     </label>
 
-
                     <input
                         type="file"
                         id="food-image"
-                        accept="image/jpeg,image/jpg,image/png,image/webp"
-                    >
-
+                        accept="image/jpeg,image/jpg,image/png,image/webp">
 
                     <small>
                         Choose a JPG, PNG or WEBP image.
@@ -329,19 +270,16 @@
                 </div>
 
 
-                <!-- ====================================== -->
                 <!-- AVAILABILITY -->
-                <!-- ====================================== -->
 
                 <div class="form-group checkbox-group">
 
-                    <label>
+                    <label for="food-available">
 
                         <input
                             type="checkbox"
                             id="food-available"
-                            checked
-                        >
+                            checked>
 
                         Food is available
 
@@ -350,24 +288,19 @@
                 </div>
 
 
-                <!-- ====================================== -->
                 <!-- FORM BUTTONS -->
-                <!-- ====================================== -->
 
                 <div class="food-form-buttons">
 
                     <button
                         type="submit"
-                        id="save-food-btn"
-                    >
+                        id="save-food-btn">
                         💾 Save Food
                     </button>
 
-
                     <button
                         type="button"
-                        id="cancel-food-btn"
-                    >
+                        id="cancel-food-btn">
                         Cancel
                     </button>
 
@@ -378,16 +311,11 @@
         </div>
 
 
-        <!-- ====================================== -->
-        <!-- FOOD LIST -->
-        <!-- ====================================== -->
+        <!-- CURRENT FOOD LIST -->
 
         <div class="food-list-section">
 
-            <h3>
-                Current Food
-            </h3>
-
+            <h3>Current Food</h3>
 
             <div id="food-container">
 
@@ -402,16 +330,11 @@
     </section>
 
 
-    <!-- ====================================== -->
     <!-- CUSTOMER ORDERS -->
-    <!-- ====================================== -->
 
     <section class="orders-section">
 
-        <h2>
-            📋 Customer Orders
-        </h2>
-
+        <h2>📋 Customer Orders</h2>
 
         <main id="orders-container">
 
@@ -424,12 +347,11 @@
     </section>
 
 
-    <!-- ====================================== -->
     <!-- JAVASCRIPT -->
-    <!-- ====================================== -->
 
     <script src="kitchen.js"></script>
 
 </body>
+
 </html>
 

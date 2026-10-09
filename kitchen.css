@@ -436,7 +436,7 @@ body{
 
 
 }
-```css
+
 /* =========================
    FOOD MANAGEMENT
 ========================= */
@@ -1099,5 +1099,109 @@ body{
 
     }
 
+}
+
+/* =========================
+   FOOD STOCK / REMAINING UNITS
+========================= */
+
+.food-stock {
+    margin-top: 12px;
+    padding: 12px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.food-stock label {
+    font-size: 14px;
+    font-weight: bold;
+    color: #1e293b;
+}
+
+.food-stock .stock-count {
+    font-size: 18px;
+    font-weight: bold;
+    color: #2563eb;
+}
+
+.food-stock .stock-count.low-stock {
+    color: #d97706;
+}
+
+.food-stock .stock-count.out-of-stock {
+    color: #dc2626;
+}
+
+/* Stock editing controls */
+
+.stock-edit {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.stock-edit input {
+    width: 100%;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    font-size: 14px;
+}
+
+.stock-edit button {
+    padding: 10px 14px;
+    border: none;
+    border-radius: 7px;
+    background: #16a34a;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.stock-edit button:hover {
+    background: #15803d;
+}
+
+.stock-edit input:focus {
+    outline: 2px solid #93c5fd;
+    border-color: #2563eb;
+}
+
+@media (max-width: 480px) {
+    .stock-edit {
+        flex-wrap: wrap;
+    }
+
+    .stock-edit button {
+        flex: 1;
+    }
+}
+
+
+/* Make the available stock field visible */
+#food-stock {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100%;
+    min-height: 44px;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #333333;
+}
+
+#food-form .form-group:has(#food-stock) {
+    display: flex !important;
+    flex-direction: column;
+    visibility: visible !important;
 }
 
