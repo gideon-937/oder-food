@@ -62,6 +62,11 @@ const orderSchema = new mongoose.Schema({
     merchantRequestId: {
         type: String
     },
+        // Store only the hash of the customer's private status token.
+    paymentStatusTokenHash: {
+        type: String,
+        select: false
+    },
 
     mpesaReceiptNumber: {
         type: String

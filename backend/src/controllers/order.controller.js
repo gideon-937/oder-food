@@ -1,4 +1,5 @@
 
+import crypto from "node:crypto";
 import mongoose from "mongoose";
 import Order from "../models/order.model.js";
 import Food from "../models/food.model.js";
@@ -41,6 +42,17 @@ export const createOrder = async (req, res) => {
             message: "Customer phone number is required."
         });
     }
+
+    // --------------------------------------
+    // GENERATE CUSTOMER PAYMENT-STATUS TOKEN
+    // --------------------------------------
+
+    const statusToken = crypto.randomBytes(32).toString("hex");
+
+    const statusTokenHash = crypto
+        .createHash("sha256")
+        .update(statusToken)
+        .digest("hex");
 
     // --------------------------------------
     // VALIDATE CART
@@ -242,8 +254,6 @@ export const createOrder = async (req, res) => {
                     throw error;
                 }
 
-                // Diagnostic log: this is the updated stock
-                // inside the transaction.
                 console.log("STOCK DEDUCTED:", {
                     foodName: updatedFood.name,
                     foodId: updatedFood._id.toString(),
@@ -267,7 +277,10 @@ export const createOrder = async (req, res) => {
                         totalPrice,
                         paymentStatus: "Pending",
                         orderStatus: "Pending",
-                        stockReserved: true
+                        stockReserved: true,
+
+                        // Store the hash, never the plaintext token.
+                        paymentStatusTokenHash: statusTokenHash
                     }
                 ],
                 { session }
@@ -276,7 +289,10 @@ export const createOrder = async (req, res) => {
             createdOrder = orders[0];
         });
 
-        // This log occurs after withTransaction completes.
+        // --------------------------------------
+        // LOG SUCCESSFUL ORDER CREATION
+        // --------------------------------------
+
         console.log("===== ORDER CREATED; STOCK RESERVED =====");
 
         console.log({
@@ -286,10 +302,20 @@ export const createOrder = async (req, res) => {
             stockReserved: createdOrder.stockReserved
         });
 
+        // --------------------------------------
+        // RETURN ORDER AND TOKEN ONCE
+        // --------------------------------------
+
+        const orderResponse = createdOrder.toObject();
+
+        // Never expose the stored hash in the API response.
+        delete orderResponse.paymentStatusTokenHash;
+
         return res.status(201).json({
             success: true,
             message: "Order created and food stock reserved successfully.",
-            order: createdOrder
+            order: orderResponse,
+            statusToken
         });
 
     } catch (error) {
@@ -382,12 +408,17 @@ export const getOrderById = async (req, res) => {
 
 // ======================================
 // GET PAYMENT STATUS
-// Used by customer
+// Requires the customer's private status token
 // ======================================
 
 export const getPaymentStatus = async (req, res) => {
     try {
         const { id } = req.params;
+        const suppliedToken = req.get("X-Order-Status-Token");
+
+        // --------------------------------------
+        // VALIDATE ORDER ID
+        // --------------------------------------
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({
@@ -396,15 +427,78 @@ export const getPaymentStatus = async (req, res) => {
             });
         }
 
-        const order = await Order.findById(id)
-            .select("paymentStatus failureReason orderStatus");
+        // --------------------------------------
+        // VALIDATE TOKEN FORMAT
+        // --------------------------------------
 
-        if (!order) {
-            return res.status(404).json({
+        if (
+            typeof suppliedToken !== "string" ||
+            !/^[a-f0-9]{64}$/i.test(suppliedToken)
+        ) {
+            return res.status(401).json({
                 success: false,
-                message: "Order not found."
+                message: "Order status authorization required."
             });
         }
+
+        // --------------------------------------
+        // LOAD ORDER AND TOKEN HASH
+        // --------------------------------------
+
+        const order = await Order.findById(id).select(
+            "+paymentStatusTokenHash paymentStatus failureReason orderStatus"
+        );
+
+        // Return the same status for missing orders and orders
+        // that cannot be authorized.
+        if (!order || !order.paymentStatusTokenHash) {
+            return res.status(401).json({
+                success: false,
+                message:
+                    "Order status authorization failed. Contact the hotel if this is an existing order."
+            });
+        }
+
+        // --------------------------------------
+        // HASH SUPPLIED TOKEN
+        // --------------------------------------
+
+        const suppliedHash = crypto
+            .createHash("sha256")
+            .update(suppliedToken)
+            .digest();
+
+        let storedHash;
+
+        try {
+            storedHash = Buffer.from(
+                order.paymentStatusTokenHash,
+                "hex"
+            );
+        } catch {
+            return res.status(401).json({
+                success: false,
+                message: "Order status authorization failed."
+            });
+        }
+
+        // --------------------------------------
+        // CONSTANT-TIME TOKEN COMPARISON
+        // --------------------------------------
+
+        if (
+            storedHash.length !== suppliedHash.length ||
+            !crypto.timingSafeEqual(storedHash, suppliedHash)
+        ) {
+            return res.status(401).json({
+                success: false,
+                message: "Order status authorization failed."
+            });
+        }
+
+        // --------------------------------------
+        // RETURN AUTHORIZED PAYMENT STATUS
+        // --------------------------------------
 
         return res.status(200).json({
             success: true,
@@ -573,7 +667,7 @@ export const updateOrderStatus = async (req, res) => {
 // ======================================
 // DELETE ORDER
 // Do not delete an order with an active
-// stock reservation
+// stock reservation or unresolved payment
 // ======================================
 
 export const deleteOrder = async (req, res) => {
@@ -596,44 +690,44 @@ export const deleteOrder = async (req, res) => {
             });
         }
 
-       // Never delete an order whose payment outcome is unresolved.
-if (order.paymentStatus === "Pending") {
-    return res.status(409).json({
-        success: false,
-        message:
-            "This order has a pending payment. Verify its outcome before deleting it."
-    });
-}
+        // Never delete an order whose payment outcome is unresolved.
+        if (order.paymentStatus === "Pending") {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "This order has a pending payment. Verify its outcome before deleting it."
+            });
+        }
 
-// Never delete a successful payment record.
-if (
-    order.paymentStatus === "Paid" ||
-    order.mpesaReceiptNumber
-) {
-    return res.status(409).json({
-        success: false,
-        message:
-            "This order has a successful payment record and cannot be deleted."
-    });
-}
+        // Never delete a successful payment record.
+        if (
+            order.paymentStatus === "Paid" ||
+            order.mpesaReceiptNumber
+        ) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "This order has a successful payment record and cannot be deleted."
+            });
+        }
 
-// Never delete an order while its stock is reserved.
-if (order.stockReserved === true) {
-    return res.status(409).json({
-        success: false,
-        message:
-            "This order still has reserved food stock. Resolve the reservation before deleting it."
-    });
-}
+        // Never delete an order while its stock is reserved.
+        if (order.stockReserved === true) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "This order still has reserved food stock. Resolve the reservation before deleting it."
+            });
+        }
 
-// Only confirmed failed orders can be deleted.
-if (order.paymentStatus !== "Failed") {
-    return res.status(409).json({
-        success: false,
-        message:
-            "Only confirmed failed orders can be deleted."
-    });
-}
+        // Only confirmed failed orders can be deleted.
+        if (order.paymentStatus !== "Failed") {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "Only confirmed failed orders can be deleted."
+            });
+        }
 
         await Order.findByIdAndDelete(id);
 
