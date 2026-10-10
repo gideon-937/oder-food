@@ -47,7 +47,6 @@ const PENDING_ORDER_HISTORY_KEY = "pendingFoodOrderHistory";
 
 let shoppingCart = [];
 let currentOrderId = localStorage.getItem(PENDING_ORDER_KEY) || null;
-let checkoutStageActive = Boolean(currentOrderId);
 
 // Remember whether the customer has entered the checkout stage.
 let checkoutStageActive = Boolean(currentOrderId);
@@ -170,29 +169,49 @@ function archivePendingOrder(orderId) {
 // API HELPERS
 // ======================================
 
-async function fetchJSON(url, options = {}) {
-    const response = await fetch(url, options);
 
-    let data;
+async function fetchJSON(url, options = {}) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
-        data = await response.json();
-    } catch {
-        throw new Error(
-            `The server returned an invalid response (HTTP ${response.status}).`
-        );
-    }
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
 
-    if (!response.ok) {
-        throw new Error(
-            data.message ||
-            data.error ||
-            `Request failed with HTTP ${response.status}.`
-        );
-    }
+        let data;
 
-    return data;
+        try {
+            data = await response.json();
+        } catch {
+            throw new Error(
+                `Invalid server response (HTTP ${response.status}).`
+            );
+        }
+
+        if (!response.ok) {
+            throw new Error(
+                data.message ||
+                data.error ||
+                `Request failed with HTTP ${response.status}.`
+            );
+        }
+
+        return data;
+    } catch (error) {
+        if (error.name === "AbortError") {
+            throw new Error(
+                "The food server took too long to respond. Please try again."
+            );
+        }
+
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
+
 
 function getFoodsFromResponse(data) {
     if (Array.isArray(data)) return data;
@@ -551,18 +570,21 @@ function displayCart() {
 
     cartItems.innerHTML = "";
 
-    if (shoppingCart.length === 0) {
-        cartItems.innerHTML = "<p>Your basket is empty.</p>";
+   
+if (shoppingCart.length === 0) {
+    cartItems.innerHTML = "<p>Your basket is empty.</p>";
 
-        cartTotal.textContent = "0";
-        cartCount.textContent = "0";
+    cartTotal.textContent = "0";
+    cartCount.textContent = "0";
 
-        checkoutBtn.disabled = true;
-        checkoutBtn.style.opacity = "0.5";
-        checkoutBtn.style.cursor = "not-allowed";
+    checkoutBtn.style.display = checkoutStageActive ? "none" : "block";
+    checkoutBtn.disabled = true;
+    checkoutBtn.style.opacity = "0.5";
+    checkoutBtn.style.cursor = "not-allowed";
 
-        return;
-    }
+    return;
+}
+
 
     let total = 0;
     let count = 0;
@@ -1510,14 +1532,14 @@ loadFoods().catch(() => {
 });
 
 if (currentOrderId) {
-     if (paymentBox) {
-    paymentBox.style.display = "block";
-}
+    if (paymentBox) {
+        paymentBox.style.display = "block";
+    }
 
-// Hide Checkout after the customer enters the checkout stage.
-if (checkoutBtn) {
-    checkoutBtn.style.display = "none";
-}
+    // Hide Checkout while an order is awaiting payment confirmation.
+    if (checkoutBtn) {
+        checkoutBtn.style.display = "none";
+    }
 
     showPaymentMessage(
         "An order is awaiting payment confirmation. Checking its status..."
@@ -1525,6 +1547,7 @@ if (checkoutBtn) {
 
     startPaymentPolling(currentOrderId);
 }
+    
 
 // Refresh food and stock information every 30 seconds.
 setInterval(() => {
