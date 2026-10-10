@@ -934,14 +934,10 @@ function validateCartAgainstStock() {
     return true;
 }
 
-// ======================================
-// CHECKOUT
-// ======================================
 
-// UPDATED:
-// An unresolved previous order is archived locally.
-// A new checkout can proceed without deleting or modifying
-// the previous order in the database.
+ // ======================================
+ // CHECKOUT
+ // ======================================
 
 if (checkoutBtn) {
     checkoutBtn.addEventListener("click", async () => {
@@ -949,44 +945,38 @@ if (checkoutBtn) {
             showPaymentMessage(
                 "Please wait for the current request to finish."
             );
-
             return;
         }
 
         if (shoppingCart.length === 0) {
-            alert(
-                "Your shopping basket is empty. Add food before checkout."
-            );
-
+            alert("Your shopping basket is empty. Add food before checkout.");
             return;
         }
 
+        // Hide Checkout while the checkout form is active.
+        checkoutStageActive = true;
+        checkoutBtn.style.display = "none";
         checkoutBtn.disabled = true;
 
         try {
-            // Refresh the latest stock before checkout.
-            await refreshStock();
-
-            validateCartAgainstStock();
-
-            // Archive the previous unresolved order if there is one.
+            // Never abandon an order whose payment outcome is unknown.
             if (currentOrderId) {
-                const previousOrderId = String(currentOrderId);
+                if (paymentBox) {
+                    paymentBox.style.display = "block";
+                }
 
-                archivePendingOrder(previousOrderId);
-
-                // Stop monitoring this order in this browser tab.
-                stopPaymentPolling();
-
-                // Clear only the active browser reference.
-                // The order itself remains in the database.
-                savePendingOrder(null);
-
-                console.warn(
-                    "Previous order remains unresolved:",
-                    previousOrderId
+                showPaymentMessage(
+                    "Your previous order is still being checked. " +
+                    "Do not pay again until its payment status is confirmed."
                 );
+
+                await checkCurrentPaymentStatus();
+                return;
             }
+
+            // Verify current stock before opening the payment form.
+            await refreshStock();
+            validateCartAgainstStock();
 
             if (paymentBox) {
                 paymentBox.style.display = "block";
@@ -1006,18 +996,29 @@ if (checkoutBtn) {
             }
 
             showPaymentMessage(
-                "Your basket is ready. Enter your details to place a new order."
+                "Your basket is ready. Enter your details to continue."
             );
 
             if (customerNameInput) {
                 customerNameInput.focus();
             }
         } catch (error) {
-            console.error("Checkout stock check error:", error);
+            console.error("Checkout error:", error);
+
+            // Restore Checkout only if there is no unresolved order.
+            if (!currentOrderId) {
+                checkoutStageActive = false;
+
+                if (paymentBox) {
+                    paymentBox.style.display = "none";
+                }
+            } else {
+                checkoutStageActive = true;
+            }
 
             alert(
                 error.message ||
-                "Could not verify food stock."
+                "Could not verify food stock. Please try again."
             );
         } finally {
             displayCart();
@@ -1032,9 +1033,10 @@ if (checkoutBtn) {
 async function handlePaymentSuccess() {
     stopPaymentPolling();
 
-    shoppingCart = [];
-    saveCart();
-    savePendingOrder(null);
+   shoppingCart = [];
+saveCart();
+savePendingOrder(null);
+checkoutStageActive = false;
 
     paymentRequestInProgress = false;
     statusCheckInProgress = false;
