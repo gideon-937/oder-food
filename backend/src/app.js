@@ -21,8 +21,9 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const frontendPath = path.join(__dirname, "../..");
-const uploadsPath = path.join(__dirname, "../../uploads");
+// Frontend files currently reside in the project root.
+const frontendPath = path.resolve(__dirname, "../..");
+const uploadsPath = path.resolve(__dirname, "../../uploads");
 
 // ======================================
 // TRUST PROXY (RENDER)
@@ -32,7 +33,6 @@ app.set("trust proxy", 1);
 
 // ======================================
 // CORS
-// Keep this before API routes.
 // ======================================
 
 const allowedOrigins = [
@@ -47,8 +47,9 @@ const allowedOrigins = [
 app.use(
     cors({
         origin: (origin, callback) => {
-            // Allow requests without an Origin header,
-            // such as server-to-server requests.
+            // Allow requests without an Origin header.
+            // Authentication and authorization must still
+            // be enforced by protected API routes.
             if (!origin) {
                 return callback(null, true);
             }
@@ -57,11 +58,7 @@ app.use(
                 return callback(null, true);
             }
 
-            console.error("CORS: Origin not allowed:", origin);
-
-            return callback(
-                new Error("CORS: Origin not allowed")
-            );
+            return callback(new Error("CORS: Origin not allowed"));
         },
 
         methods: [
@@ -94,9 +91,7 @@ app.use(
             directives: {
                 defaultSrc: ["'self'"],
 
-                scriptSrc: [
-                    "'self'"
-                ],
+                scriptSrc: ["'self'"],
 
                 styleSrc: [
                     "'self'",
@@ -120,17 +115,11 @@ app.use(
                     "data:"
                 ],
 
-                objectSrc: [
-                    "'none'"
-                ],
+                objectSrc: ["'none'"],
 
-                baseUri: [
-                    "'self'"
-                ],
+                baseUri: ["'self'"],
 
-                frameAncestors: [
-                    "'self'"
-                ]
+                frameAncestors: ["'self'"]
             }
         }
     })
@@ -154,7 +143,7 @@ app.use(
 );
 
 // ======================================
-// RATE LIMITING
+// GENERAL API RATE LIMITING
 // ======================================
 
 const apiLimiter = rateLimit({
@@ -164,6 +153,7 @@ const apiLimiter = rateLimit({
     legacyHeaders: false,
 
     message: {
+        success: false,
         message: "Too many requests. Please try again later."
     }
 });
@@ -171,10 +161,79 @@ const apiLimiter = rateLimit({
 app.use("/api", apiLimiter);
 
 // ======================================
+// BLOCK PRIVATE PROJECT FILES
+// IMPORTANT: Must run before express.static()
+// ======================================
+
+const blockedPrefixes = [
+    "/backend",
+    "/node_modules",
+    "/.git",
+    "/.vscode",
+    "/.idea",
+    "/.github",
+    "/coverage",
+    "/test",
+    "/tests"
+];
+
+const blockedFiles = new Set([
+    "/.env",
+    "/.env.example",
+    "/.env.local",
+    "/.env.production",
+    "/.env.development",
+    "/package.json",
+    "/package-lock.json",
+    "/npm-shrinkwrap.json",
+    "/yarn.lock",
+    "/pnpm-lock.yaml",
+    "/.gitignore",
+    "/.gitattributes",
+    "/.gitmodules",
+    "/dockerfile",
+    "/docker-compose.yml",
+    "/docker-compose.yaml"
+]);
+
+app.use((req, res, next) => {
+    let requestPath;
+
+    try {
+        // Decode the URL to help prevent encoded-path bypasses.
+        requestPath = decodeURIComponent(req.path).toLowerCase();
+    } catch {
+        return res.sendStatus(400);
+    }
+
+    const isBlockedPrefix = blockedPrefixes.some(
+        (prefix) =>
+            requestPath === prefix ||
+            requestPath.startsWith(`${prefix}/`)
+    );
+
+    const isBlockedFile = blockedFiles.has(requestPath);
+
+    // Prevent access to private files and directories.
+    if (isBlockedPrefix || isBlockedFile) {
+        return res.sendStatus(404);
+    }
+
+    next();
+});
+
+// ======================================
 // SERVE FRONTEND FILES
 // ======================================
 
-app.use(express.static(frontendPath));
+// Keep this after the private-path protection above.
+app.use(
+    express.static(frontendPath, {
+        dotfiles: "deny",
+        index: "index.html",
+        redirect: false
+    })
+);
 
 // ======================================
 // SERVE UPLOADED IMAGES
@@ -203,10 +262,18 @@ app.use("/api/cart", cartRoutes);
 // ======================================
 
 app.use("/api", (req, res) => {
-    res.status(404).json({
+    return res.status(404).json({
         success: false,
         message: "API endpoint not found"
     });
+});
+
+// ======================================
+// 404 HANDLER FOR OTHER REQUESTS
+// ======================================
+
+app.use((req, res) => {
+    return res.status(404).send("Not found");
 });
 
 // ======================================
@@ -214,12 +281,21 @@ app.use("/api", (req, res) => {
 // ======================================
 
 app.use((error, req, res, next) => {
-    console.error("SERVER ERROR:", error.message);
+    if (res.headersSent) {
+        return next(error);
+    }
 
     if (error.message?.startsWith("CORS:")) {
         return res.status(403).json({
             success: false,
             message: "Request origin not allowed"
+        });
+    }
+
+    if (error.type === "entity.too.large") {
+        return res.status(413).json({
+            success: false,
+            message: "Request body is too large."
         });
     }
 
@@ -229,6 +305,8 @@ app.use((error, req, res, next) => {
             message: "File is too large. Maximum size is 5MB."
         });
     }
+
+    console.error("SERVER ERROR:", error.message);
 
     return res.status(500).json({
         success: false,
