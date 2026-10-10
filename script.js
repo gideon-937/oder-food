@@ -1506,9 +1506,14 @@ loadFoods().catch(() => {
 });
 
 if (currentOrderId) {
-    if (paymentBox) {
-        paymentBox.style.display = "block";
-    }
+     if (paymentBox) {
+    paymentBox.style.display = "block";
+}
+
+// Hide Checkout after the customer enters the checkout stage.
+if (checkoutBtn) {
+    checkoutBtn.style.display = "none";
+}
 
     showPaymentMessage(
         "An order is awaiting payment confirmation. Checking its status..."
