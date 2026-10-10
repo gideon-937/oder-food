@@ -47,7 +47,10 @@ const PENDING_ORDER_HISTORY_KEY = "pendingFoodOrderHistory";
 
 let shoppingCart = [];
 let currentOrderId = localStorage.getItem(PENDING_ORDER_KEY) || null;
+let checkoutStageActive = Boolean(currentOrderId);
 
+// Remember whether the customer has entered the checkout stage.
+let checkoutStageActive = Boolean(currentOrderId);
 let paymentPollingInterval = null;
 let paymentRequestInProgress = false;
 let statusCheckInProgress = false;
@@ -673,7 +676,8 @@ function displayCart() {
     cartTotal.textContent = total.toLocaleString();
     cartCount.textContent = count;
 
-    checkoutBtn.style.display = "block";
+    
+checkoutBtn.style.display = checkoutStageActive ? "none" : "block";
 
     const cartCanBeOrdered = shoppingCart.every(item => {
         const food = getFood(item.foodId);
