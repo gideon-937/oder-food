@@ -338,15 +338,18 @@ filterButtons.forEach(button => {
 // ======================================================
 // REFRESH AND PRINT
 // ======================================================
+if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => {
+        loadOrders();
+        loadFoods();
+    });
+}
 
-refreshBtn.addEventListener("click", () => {
-    loadOrders();
-    loadFoods();
-});
-
-printBtn.addEventListener("click", () => {
-    window.print();
-});
+if (printBtn) {
+    printBtn.addEventListener("click", () => {
+        window.print();
+    });
+}
 
 
 // ======================================================
