@@ -1,13 +1,21 @@
-
-"use strict";
-
 // ======================================
 // API CONFIGURATION
 // ======================================
 
 const API_URL = "https://oder-food-2.onrender.com";
 
-console.log("CUSTOMER SCRIPT.JS IS WORKING");
+console.log("MAIN SCRIPT.JS IS WORKING");
+
+// ======================================
+// REMOVE DUPLICATE CHECKOUT BUTTONS
+// ======================================
+
+document.querySelectorAll("#checkout-btn").forEach((button, index) => {
+    if (index > 0) {
+        button.remove();
+        console.warn("Removed duplicate #checkout-btn element.");
+    }
+});
 
 // ======================================
 // HTML ELEMENTS
@@ -29,28 +37,28 @@ const paymentStatusText = document.getElementById("payment-status-text");
 const customerNameInput = document.getElementById("customer-name");
 
 // ======================================
-// STORAGE KEYS
+// CART AND PAYMENT STATE
 // ======================================
 
 const CART_STORAGE_KEY = "shoppingCart";
 const PENDING_ORDER_KEY = "pendingFoodOrderId";
-const PENDING_PHONE_KEY = "pendingFoodOrderPhone";
+const PENDING_ORDER_HISTORY_KEY = "pendingFoodOrderHistory";
 
 let shoppingCart = [];
 let currentOrderId = localStorage.getItem(PENDING_ORDER_KEY) || null;
-let currentOrderPhone = localStorage.getItem(PENDING_PHONE_KEY) || null;
 
+// Remember whether the customer has entered the checkout stage.
 let checkoutStageActive = Boolean(currentOrderId);
 let paymentPollingInterval = null;
-let paymentPollingOrderId = null;
 let paymentRequestInProgress = false;
 let statusCheckInProgress = false;
 let stockRefreshInProgress = false;
+let paymentPollingOrderId = null;
 
 const foodStockMap = new Map();
 
 // ======================================
-// RESTORE CART
+// RESTORE SAVED CART
 // ======================================
 
 try {
@@ -74,12 +82,12 @@ try {
             }))
         : [];
 } catch (error) {
-    console.error("Could not restore cart:", error);
+    console.error("Could not restore shopping cart:", error);
     shoppingCart = [];
 }
 
 // ======================================
-// SAFE HTML
+// SAFE HTML TEXT
 // ======================================
 
 function escapeHTML(value) {
@@ -93,7 +101,7 @@ function escapeHTML(value) {
 }
 
 // ======================================
-// STORAGE HELPERS
+// SAVE CART AND ORDER
 // ======================================
 
 function saveCart() {
@@ -103,39 +111,67 @@ function saveCart() {
     );
 }
 
-function savePendingOrder(orderId, phone = null) {
+function savePendingOrder(orderId) {
     currentOrderId = orderId ? String(orderId) : null;
-    currentOrderPhone = currentOrderId && phone
-        ? String(phone)
-        : null;
 
     if (currentOrderId) {
         localStorage.setItem(PENDING_ORDER_KEY, currentOrderId);
     } else {
         localStorage.removeItem(PENDING_ORDER_KEY);
     }
-
-    if (currentOrderPhone) {
-        localStorage.setItem(PENDING_PHONE_KEY, currentOrderPhone);
-    } else {
-        localStorage.removeItem(PENDING_PHONE_KEY);
-    }
 }
 
-// Remove old frontend token data left by the previous version.
-// This does not change or delete any database orders.
-localStorage.removeItem("pendingFoodOrderStatusToken");
+// ======================================
+// ARCHIVE AN UNRESOLVED ORDER ID
+// ======================================
+
+// This saves the old order ID in the browser.
+// It does NOT delete the order from MongoDB.
+// It does NOT mark the order as failed or paid.
+
+function archivePendingOrder(orderId) {
+    if (!orderId) return;
+
+    const id = String(orderId);
+    let history = [];
+
+    try {
+        const saved = JSON.parse(
+            localStorage.getItem(PENDING_ORDER_HISTORY_KEY) || "[]"
+        );
+
+        if (Array.isArray(saved)) {
+            history = saved
+                .filter(value => typeof value === "string");
+        }
+    } catch (error) {
+        console.error(
+            "Could not read pending order history:",
+            error
+        );
+    }
+
+    if (!history.includes(id)) {
+        history.push(id);
+    }
+
+    // Keep a reasonable browser-side history.
+    history = history.slice(-100);
+
+    localStorage.setItem(
+        PENDING_ORDER_HISTORY_KEY,
+        JSON.stringify(history)
+    );
+}
 
 // ======================================
 // API HELPERS
 // ======================================
 
+
 async function fetchJSON(url, options = {}) {
     const controller = new AbortController();
-
-    const timeoutId = setTimeout(() => {
-        controller.abort();
-    }, 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
         const response = await fetch(url, {
@@ -143,18 +179,13 @@ async function fetchJSON(url, options = {}) {
             signal: controller.signal
         });
 
-        const contentType = response.headers.get("content-type") || "";
-
         let data;
 
-        if (contentType.includes("application/json")) {
+        try {
             data = await response.json();
-        } else {
-            const body = await response.text();
-
+        } catch {
             throw new Error(
-                `Expected JSON from server (HTTP ${response.status}). ` +
-                body.slice(0, 150)
+                `Invalid server response (HTTP ${response.status}).`
             );
         }
 
@@ -170,7 +201,7 @@ async function fetchJSON(url, options = {}) {
     } catch (error) {
         if (error.name === "AbortError") {
             throw new Error(
-                "The server took too long to respond. Please try again."
+                "The food server took too long to respond. Please try again."
             );
         }
 
@@ -179,6 +210,7 @@ async function fetchJSON(url, options = {}) {
         clearTimeout(timeoutId);
     }
 }
+
 
 function getFoodsFromResponse(data) {
     if (Array.isArray(data)) return data;
@@ -198,34 +230,12 @@ function getPaymentStatus(data) {
     ).trim().toLowerCase();
 }
 
-function normalizeKenyanPhone(phone) {
-    const digits = String(phone || "").replace(/\D/g, "");
-
-    if (/^07\d{8}$/.test(digits)) {
-        return "254" + digits.substring(1);
-    }
-
-    if (/^01\d{8}$/.test(digits)) {
-        return "254" + digits.substring(1);
-    }
-
-    if (/^254[17]\d{8}$/.test(digits)) {
-        return digits;
-    }
-
-    return null;
-}
-
 // ======================================
 // STOCK HELPERS
 // ======================================
 
-function getFood(foodId) {
-    return foodStockMap.get(String(foodId)) || null;
-}
-
 function getStock(foodId) {
-    const food = getFood(foodId);
+    const food = foodStockMap.get(String(foodId));
 
     if (
         !food ||
@@ -238,9 +248,11 @@ function getStock(foodId) {
 
     const stock = Number(food.stock);
 
-    return Number.isSafeInteger(stock) && stock >= 0
-        ? stock
-        : null;
+    if (!Number.isSafeInteger(stock) || stock < 0) {
+        return null;
+    }
+
+    return stock;
 }
 
 function getStockMessage(stock) {
@@ -250,17 +262,28 @@ function getStockMessage(stock) {
     return `${stock} ${stock === 1 ? "unit" : "units"} available`;
 }
 
+function getFood(foodId) {
+    return foodStockMap.get(String(foodId)) || null;
+}
+
+function isFoodOrderable(food) {
+    if (!food || food.available === false) return false;
+
+    const stock = getStock(food._id);
+
+    return stock !== null && stock > 0;
+}
+
 function syncCartStock() {
     shoppingCart.forEach(item => {
         const food = getFood(item.foodId);
+        const stock = getStock(item.foodId);
 
         if (food) {
             item.name = food.name || item.name;
             item.price = Number(food.price) || item.price;
             item.image = food.image || item.image || "";
         }
-
-        const stock = getStock(item.foodId);
 
         if (stock !== null) {
             item.stockLimit = stock;
@@ -271,7 +294,7 @@ function syncCartStock() {
 }
 
 // ======================================
-// IMAGE URLS
+// FOOD IMAGE URL
 // ======================================
 
 function getFoodImageUrl(image) {
@@ -290,7 +313,9 @@ function getFoodImageUrl(image) {
     image = image.replace(/\\/g, "/");
 
     if (image.includes("/uploads/")) {
-        image = image.substring(image.indexOf("/uploads/"));
+        image = image.substring(
+            image.indexOf("/uploads/")
+        );
     }
 
     if (!image.startsWith("/")) {
@@ -327,32 +352,45 @@ async function loadFoods() {
 
         if (foodContainer && foodStockMap.size === 0) {
             foodContainer.innerHTML = `
-                <p>Could not load food from the server.</p>
-                <button type="button" id="retry-food-loading">
-                    Try Again
-                </button>
+                <p>
+                    Could not connect to the food server.
+                    Please refresh the page.
+                </p>
             `;
-
-            document
-                .getElementById("retry-food-loading")
-                ?.addEventListener("click", () => {
-                    loadFoods().catch(console.error);
-                });
         }
 
         throw error;
     }
 }
 
+// ======================================
+// REFRESH STOCK
+// ======================================
+
 async function refreshStock() {
-    if (stockRefreshInProgress) {
-        return loadFoods();
+    while (stockRefreshInProgress) {
+        await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     stockRefreshInProgress = true;
 
     try {
-        return await loadFoods();
+        const data = await fetchJSON(`${API_URL}/api/food`);
+        const foods = getFoodsFromResponse(data);
+
+        foodStockMap.clear();
+
+        foods.forEach(food => {
+            if (food && food._id) {
+                foodStockMap.set(String(food._id), food);
+            }
+        });
+
+        syncCartStock();
+        displayFoods(foods);
+        displayCart();
+
+        return foods;
     } finally {
         stockRefreshInProgress = false;
     }
@@ -363,16 +401,12 @@ async function refreshStock() {
 // ======================================
 
 function displayFoods(foods) {
-    if (!foodContainer) {
-        console.error(
-            'Missing "#food-container" in the customer HTML page.'
-        );
-        return;
-    }
+    if (!foodContainer) return;
 
-    if (!foods.length) {
+    if (!foods || foods.length === 0) {
         foodContainer.innerHTML =
             "<p>No food available at the moment.</p>";
+
         return;
     }
 
@@ -383,13 +417,17 @@ function displayFoods(foods) {
         const imageUrl = getFoodImageUrl(food.image);
         const stock = getStock(foodId);
         const available = food.available !== false;
-        const canOrder = available && stock !== null && stock > 0;
+        const canOrder =
+            available &&
+            stock !== null &&
+            stock > 0;
+
         const price = Number(food.price) || 0;
 
-        const card = document.createElement("div");
-        card.className = "hero";
+        const foodCard = document.createElement("div");
+        foodCard.className = "hero";
 
-        card.innerHTML = `
+        foodCard.innerHTML = `
             ${
                 imageUrl
                     ? `<img
@@ -397,12 +435,17 @@ function displayFoods(foods) {
                         alt="${escapeHTML(food.name)}"
                         class="food-image"
                         loading="lazy"
+                        onerror="this.style.display='none';"
                     >`
                     : `<div class="no-image">No Image</div>`
             }
 
-            <h2 class="price">KSh ${price.toLocaleString()}</h2>
+            <h1 class="price">
+                KSh ${price.toLocaleString()}
+            </h1>
+
             <p>${escapeHTML(food.name)}</p>
+
             <p>${escapeHTML(food.description || "")}</p>
 
             ${
@@ -411,7 +454,13 @@ function displayFoods(foods) {
                     : ""
             }
 
-            <p class="remaining-stock" style="font-weight:bold">
+            <p
+                class="remaining-stock"
+                data-stock-id="${escapeHTML(foodId)}"
+                style="font-weight:bold;color:${
+                    canOrder ? "#237a36" : "#c62828"
+                }"
+            >
                 ${
                     !available
                         ? "Currently unavailable"
@@ -425,26 +474,27 @@ function displayFoods(foods) {
                 data-id="${escapeHTML(foodId)}"
                 ${canOrder ? "" : "disabled"}
             >
-                ${canOrder ? "🛒 Add to Cart" : "Unavailable"}
+                ${
+                    !available
+                        ? "Unavailable"
+                        : stock === 0
+                            ? "Out of Stock"
+                            : stock === null
+                                ? "Stock Unavailable"
+                                : "🛒 Add to Cart"
+                }
             </button>
         `;
 
-        const image = card.querySelector("img");
+        foodContainer.appendChild(foodCard);
+    });
 
-        if (image) {
-            image.addEventListener("error", () => {
-                image.style.display = "none";
-            });
-        }
-
-        card.querySelector(".add-cart-btn")
-            ?.addEventListener("click", event => {
-                if (!event.currentTarget.disabled) {
-                    addFoodToCart(foodId);
-                }
-            });
-
-        foodContainer.appendChild(card);
+    foodContainer.querySelectorAll(".add-cart-btn").forEach(button => {
+        button.addEventListener("click", () => {
+            if (!button.disabled) {
+                addFoodToCart(button.dataset.id);
+            }
+        });
     });
 }
 
@@ -455,7 +505,12 @@ function displayFoods(foods) {
 function addFoodToCart(foodId) {
     const food = getFood(foodId);
 
-    if (!food || food.available === false) {
+    if (!food) {
+        alert("Food information is unavailable. Refresh the page.");
+        return;
+    }
+
+    if (food.available === false) {
         alert("This food is currently unavailable.");
         return;
     }
@@ -463,7 +518,7 @@ function addFoodToCart(foodId) {
     const stock = getStock(foodId);
 
     if (stock === null) {
-        alert("Stock information is unavailable. Refresh the page.");
+        alert("Stock information is unavailable. Please refresh.");
         return;
     }
 
@@ -483,6 +538,7 @@ function addFoodToCart(foodId) {
         }
 
         existing.quantity++;
+        existing.stockLimit = stock;
     } else {
         shoppingCart.push({
             foodId: String(food._id),
@@ -496,11 +552,14 @@ function addFoodToCart(foodId) {
 
     saveCart();
     displayCart();
-    cart?.classList.add("active");
+
+    if (cart) {
+        cart.classList.add("active");
+    }
 }
 
 // ======================================
-// DISPLAY CART
+// DISPLAY SHOPPING CART
 // ======================================
 
 function displayCart() {
@@ -510,17 +569,21 @@ function displayCart() {
 
     cartItems.innerHTML = "";
 
-    if (shoppingCart.length === 0) {
-        cartItems.innerHTML = "<p>Your basket is empty.</p>";
-        cartTotal.textContent = "0";
-        cartCount.textContent = "0";
+   
+if (shoppingCart.length === 0) {
+    cartItems.innerHTML = "<p>Your basket is empty.</p>";
 
-        checkoutBtn.style.display =
-            checkoutStageActive ? "none" : "block";
+    cartTotal.textContent = "0";
+    cartCount.textContent = "0";
 
-        checkoutBtn.disabled = true;
-        return;
-    }
+    checkoutBtn.style.display = checkoutStageActive ? "none" : "block";
+    checkoutBtn.disabled = true;
+    checkoutBtn.style.opacity = "0.5";
+    checkoutBtn.style.cursor = "not-allowed";
+
+    return;
+}
+
 
     let total = 0;
     let count = 0;
@@ -528,36 +591,52 @@ function displayCart() {
     shoppingCart.forEach((item, index) => {
         const quantity = Number(item.quantity) || 1;
         const price = Number(item.price) || 0;
-        const subtotal = quantity * price;
+        const itemTotal = price * quantity;
         const stock = getStock(item.foodId);
         const food = getFood(item.foodId);
-        const available = Boolean(food && food.available !== false);
+        const available = Boolean(
+            food && food.available !== false
+        );
+
         const imageUrl = getFoodImageUrl(item.image);
 
-        total += subtotal;
+        total += itemTotal;
         count += quantity;
 
-        const exceedsStock = stock === null || quantity > stock;
+        const quantityAtLimit =
+            stock !== null && quantity >= stock;
 
-        const row = document.createElement("div");
-        row.className = "cart-item";
+        const exceedsStock =
+            stock === null || quantity > stock;
 
-        row.innerHTML = `
+        const cartItem = document.createElement("div");
+        cartItem.className = "cart-item";
+
+        cartItem.innerHTML = `
             ${
                 imageUrl
                     ? `<img
                         src="${escapeHTML(imageUrl)}"
                         alt="${escapeHTML(item.name)}"
                         class="cart-food-image"
+                        onerror="this.style.display='none';"
                     >`
                     : ""
             }
 
             <div class="cart-item-details">
                 <h4>${escapeHTML(item.name)}</h4>
+
                 <p>KSh ${price.toLocaleString()}</p>
 
-                <p class="cart-stock-message">
+                <p
+                    class="cart-stock-message"
+                    style="font-size:13px;color:${
+                        available && !exceedsStock
+                            ? "#237a36"
+                            : "#c62828"
+                    }"
+                >
                     ${
                         !available
                             ? "Currently unavailable"
@@ -568,163 +647,243 @@ function displayCart() {
                 </p>
 
                 <div class="quantity-controls">
-                    <button type="button" class="decrease-btn"
-                        data-index="${index}">−</button>
+                    <button
+                        type="button"
+                        class="decrease-btn"
+                        data-index="${index}"
+                        aria-label="Decrease quantity"
+                    >−</button>
 
                     <span>${quantity}</span>
 
-                    <button type="button" class="increase-btn"
+                    <button
+                        type="button"
+                        class="increase-btn"
                         data-index="${index}"
+                        aria-label="Increase quantity"
                         ${
+                            quantityAtLimit ||
                             !available ||
-                            stock === null ||
-                            quantity >= stock
+                            stock === null
                                 ? "disabled"
                                 : ""
-                        }>+</button>
+                        }
+                    >+</button>
                 </div>
 
                 ${
                     exceedsStock
-                        ? `<p>Please reduce the quantity to available stock.</p>`
+                        ? `<p style="color:#c62828">
+                            Please reduce the quantity to the available stock.
+                        </p>`
                         : ""
                 }
 
-                <p>Subtotal: KSh ${subtotal.toLocaleString()}</p>
+                <p>
+                    Subtotal: KSh ${itemTotal.toLocaleString()}
+                </p>
 
-                <button type="button" class="remove-btn"
-                    data-index="${index}">Remove</button>
+                <button
+                    type="button"
+                    class="remove-btn"
+                    data-index="${index}"
+                >Remove</button>
             </div>
         `;
 
-        row.querySelector("img")?.addEventListener("error", event => {
-            event.currentTarget.style.display = "none";
-        });
-
-        row.querySelector(".increase-btn")
-            ?.addEventListener("click", async event => {
-                if (event.currentTarget.disabled) return;
-
-                try {
-                    await refreshStock();
-
-                    const currentItem = shoppingCart[index];
-                    if (!currentItem) return;
-
-                    const currentFood = getFood(currentItem.foodId);
-                    const currentStock = getStock(currentItem.foodId);
-
-                    if (
-                        !currentFood ||
-                        currentFood.available === false ||
-                        currentStock === null
-                    ) {
-                        alert("Could not confirm availability.");
-                        return;
-                    }
-
-                    if (currentItem.quantity >= currentStock) {
-                        alert(`Only ${currentStock} unit(s) are available.`);
-                        return;
-                    }
-
-                    currentItem.quantity++;
-                    saveCart();
-                } catch (error) {
-                    alert(error.message || "Could not refresh stock.");
-                } finally {
-                    displayCart();
-                }
-            });
-
-        row.querySelector(".decrease-btn")
-            ?.addEventListener("click", () => {
-                const currentItem = shoppingCart[index];
-                if (!currentItem) return;
-
-                if (currentItem.quantity > 1) {
-                    currentItem.quantity--;
-                } else {
-                    shoppingCart.splice(index, 1);
-                }
-
-                saveCart();
-                displayCart();
-            });
-
-        row.querySelector(".remove-btn")
-            ?.addEventListener("click", () => {
-                shoppingCart.splice(index, 1);
-                saveCart();
-                displayCart();
-            });
-
-        cartItems.appendChild(row);
+        cartItems.appendChild(cartItem);
     });
 
     cartTotal.textContent = total.toLocaleString();
     cartCount.textContent = count;
 
-    checkoutBtn.style.display =
-        checkoutStageActive ? "none" : "block";
+    
+checkoutBtn.style.display = checkoutStageActive ? "none" : "block";
 
-    const valid = shoppingCart.every(item => {
+    const cartCanBeOrdered = shoppingCart.every(item => {
         const food = getFood(item.foodId);
         const stock = getStock(item.foodId);
 
-        return food &&
+        return (
+            food &&
             food.available !== false &&
             stock !== null &&
-            Number.isSafeInteger(item.quantity) &&
-            item.quantity >= 1 &&
-            item.quantity <= stock;
+            Number.isSafeInteger(Number(item.quantity)) &&
+            Number(item.quantity) >= 1 &&
+            Number(item.quantity) <= stock
+        );
     });
 
-    checkoutBtn.disabled = !valid;
-    checkoutBtn.style.opacity = valid ? "1" : "0.5";
+    checkoutBtn.disabled = !cartCanBeOrdered;
+    checkoutBtn.style.opacity =
+        checkoutBtn.disabled ? "0.5" : "1";
+
+    checkoutBtn.style.cursor =
+        checkoutBtn.disabled ? "not-allowed" : "pointer";
+
+    // INCREASE QUANTITY
+    cartItems.querySelectorAll(".increase-btn").forEach(button => {
+        button.addEventListener("click", async () => {
+            if (button.disabled) return;
+
+            button.disabled = true;
+
+            try {
+                await refreshStock();
+
+                const index = Number(button.dataset.index);
+                const item = shoppingCart[index];
+
+                if (!item) return;
+
+                const food = getFood(item.foodId);
+                const stock = getStock(item.foodId);
+
+                if (!food || food.available === false) {
+                    alert("This food is currently unavailable.");
+                    return;
+                }
+
+                if (stock === null) {
+                    alert("Could not confirm stock. Please try again.");
+                    return;
+                }
+
+                if (item.quantity >= stock) {
+                    alert(`Only ${stock} unit(s) are available.`);
+                    return;
+                }
+
+                item.quantity++;
+                item.stockLimit = stock;
+
+                saveCart();
+                displayCart();
+            } catch (error) {
+                console.error("Quantity update error:", error);
+
+                alert("Unable to refresh stock. Please try again.");
+            } finally {
+                displayCart();
+            }
+        });
+    });
+
+    // DECREASE QUANTITY
+    cartItems.querySelectorAll(".decrease-btn").forEach(button => {
+        button.addEventListener("click", () => {
+            const index = Number(button.dataset.index);
+            const item = shoppingCart[index];
+
+            if (!item) return;
+
+            if (item.quantity > 1) {
+                item.quantity--;
+            } else {
+                shoppingCart.splice(index, 1);
+            }
+
+            saveCart();
+            displayCart();
+        });
+    });
+
+    // REMOVE ITEM
+    cartItems.querySelectorAll(".remove-btn").forEach(button => {
+        button.addEventListener("click", () => {
+            const index = Number(button.dataset.index);
+
+            if (!Number.isInteger(index)) return;
+
+            shoppingCart.splice(index, 1);
+
+            saveCart();
+            displayCart();
+        });
+    });
 }
 
 // ======================================
-// PAYMENT MESSAGES
+// PAYMENT UI HELPERS
 // ======================================
 
 function showPaymentMessage(message) {
-    if (paymentStatus) paymentStatus.style.display = "block";
-    if (paymentStatusText) paymentStatusText.textContent = message;
+    if (paymentStatus) {
+        paymentStatus.style.display = "block";
+    }
+
+    if (paymentStatusText) {
+        paymentStatusText.textContent = message;
+    }
 }
+
+function resetPaymentUI() {
+    if (paymentBox) {
+        paymentBox.style.display =
+            currentOrderId ? "block" : "none";
+    }
+
+    if (paymentStatus) {
+        paymentStatus.style.display = "none";
+    }
+
+    if (paymentStatusText) {
+        paymentStatusText.textContent = "";
+    }
+
+    if (payBtn) {
+        payBtn.disabled = false;
+
+        payBtn.textContent = currentOrderId
+            ? "Check Payment Status"
+            : "Pay Now";
+    }
+
+    displayCart();
+}
+
+// ======================================
+// STOP PAYMENT POLLING
+// ======================================
 
 function stopPaymentPolling() {
     if (paymentPollingInterval) {
         clearInterval(paymentPollingInterval);
+        paymentPollingInterval = null;
     }
 
-    paymentPollingInterval = null;
     paymentPollingOrderId = null;
 }
 
 // ======================================
-// CART OPEN/CLOSE
+// OPEN AND CLOSE CART
 // ======================================
 
-cartIcon?.addEventListener("click", () => {
-    cart?.classList.add("active");
-});
+if (cartIcon && cart) {
+    cartIcon.addEventListener("click", () => {
+        cart.classList.add("active");
+    });
+}
 
-closeCart?.addEventListener("click", () => {
-    cart?.classList.remove("active");
+if (closeCart && cart) {
+    closeCart.addEventListener("click", () => {
+        cart.classList.remove("active");
 
-    if (currentOrderId) {
-        if (paymentBox) paymentBox.style.display = "block";
+        if (currentOrderId && paymentBox) {
+            paymentBox.style.display = "block";
 
-        showPaymentMessage(
-            "An order is awaiting payment confirmation. " +
-            "Check its status before paying again."
-        );
-    }
-});
+            showPaymentMessage(
+                "An order is awaiting payment confirmation. " +
+                "Check its status before paying again."
+            );
+        } else {
+            resetPaymentUI();
+        }
+    });
+}
 
 // ======================================
-// VALIDATE STOCK
+// VALIDATE CART AGAINST SERVER STOCK
 // ======================================
 
 function validateCartAgainstStock() {
@@ -737,78 +896,136 @@ function validateCartAgainstStock() {
         const stock = getStock(item.foodId);
 
         if (!food) {
-            throw new Error(`${item.name} could not be found.`);
+            throw new Error(
+                `${item.name} could not be found. Refresh your basket.`
+            );
         }
 
         if (food.available === false) {
-            throw new Error(`${item.name} is currently unavailable.`);
+            throw new Error(
+                `${item.name} is currently unavailable.`
+            );
         }
 
         if (stock === null) {
-            throw new Error(`Stock for ${item.name} could not be confirmed.`);
+            throw new Error(
+                `Stock for ${item.name} could not be confirmed.`
+            );
         }
 
         if (
             !Number.isSafeInteger(Number(item.quantity)) ||
-            Number(item.quantity) < 1 ||
-            Number(item.quantity) > stock
+            Number(item.quantity) < 1
         ) {
             throw new Error(
-                `Please check the quantity of ${item.name}. ` +
-                `Available stock: ${stock}.`
+                `Invalid quantity for ${item.name}.`
+            );
+        }
+
+        if (Number(item.quantity) > stock) {
+            throw new Error(
+                `Only ${stock} unit(s) of ${item.name} are available. ` +
+                "Please update your basket."
             );
         }
     }
+
+    return true;
 }
 
 // ======================================
-// CHECKOUT BUTTON
+// CHECKOUT
 // ======================================
 
-checkoutBtn?.addEventListener("click", async () => {
-    if (paymentRequestInProgress || statusCheckInProgress) return;
+// UPDATED:
+// An unresolved previous order is archived locally.
+// A new checkout can proceed without deleting or modifying
+// the previous order in the database.
 
-    if (shoppingCart.length === 0) {
-        alert("Your shopping basket is empty.");
-        return;
-    }
+if (checkoutBtn) {
+    checkoutBtn.addEventListener("click", async () => {
+        if (paymentRequestInProgress || statusCheckInProgress) {
+            showPaymentMessage(
+                "Please wait for the current request to finish."
+            );
 
-    checkoutStageActive = true;
-    displayCart();
+            return;
+        }
 
-    if (currentOrderId) {
-        if (paymentBox) paymentBox.style.display = "block";
+        if (shoppingCart.length === 0) {
+            alert(
+                "Your shopping basket is empty. Add food before checkout."
+            );
 
-        showPaymentMessage(
-            "You already have an unresolved order. Check its payment " +
-            "status before creating another order."
-        );
+            return;
+        }
 
-        await checkCurrentPaymentStatus();
-        return;
-    }
+        checkoutBtn.disabled = true;
 
-    try {
-        await refreshStock();
-        validateCartAgainstStock();
+        try {
+            // Refresh the latest stock before checkout.
+            await refreshStock();
 
-        if (paymentBox) paymentBox.style.display = "block";
+            validateCartAgainstStock();
 
-        showPaymentMessage(
-            "Your basket is ready. Enter your name and M-Pesa number."
-        );
+            // Archive the previous unresolved order if there is one.
+            if (currentOrderId) {
+                const previousOrderId = String(currentOrderId);
 
-        customerNameInput?.focus();
-    } catch (error) {
-        checkoutStageActive = false;
-        displayCart();
+                archivePendingOrder(previousOrderId);
 
-        alert(error.message || "Could not verify stock.");
-    }
-});
+                // Stop monitoring this order in this browser tab.
+                stopPaymentPolling();
+
+                // Clear only the active browser reference.
+                // The order itself remains in the database.
+                savePendingOrder(null);
+
+                console.warn(
+                    "Previous order remains unresolved:",
+                    previousOrderId
+                );
+            }
+
+            if (paymentBox) {
+                paymentBox.style.display = "block";
+            }
+
+            if (paymentStatus) {
+                paymentStatus.style.display = "none";
+            }
+
+            if (paymentStatusText) {
+                paymentStatusText.textContent = "";
+            }
+
+            if (payBtn) {
+                payBtn.disabled = false;
+                payBtn.textContent = "Pay Now";
+            }
+
+            showPaymentMessage(
+                "Your basket is ready. Enter your details to place a new order."
+            );
+
+            if (customerNameInput) {
+                customerNameInput.focus();
+            }
+        } catch (error) {
+            console.error("Checkout stock check error:", error);
+
+            alert(
+                error.message ||
+                "Could not verify food stock."
+            );
+        } finally {
+            displayCart();
+        }
+    });
+}
 
 // ======================================
-// CONFIRMED PAYMENT SUCCESS
+// HANDLE CONFIRMED PAYMENT SUCCESS
 // ======================================
 
 async function handlePaymentSuccess() {
@@ -818,16 +1035,28 @@ async function handlePaymentSuccess() {
     saveCart();
     savePendingOrder(null);
 
-    checkoutStageActive = false;
     paymentRequestInProgress = false;
     statusCheckInProgress = false;
 
-    cart?.classList.remove("active");
+    if (cart) {
+        cart.classList.remove("active");
+    }
 
-    if (paymentBox) paymentBox.style.display = "none";
-    if (paymentStatus) paymentStatus.style.display = "none";
-    if (phoneInput) phoneInput.value = "";
-    if (customerNameInput) customerNameInput.value = "";
+    if (paymentBox) {
+        paymentBox.style.display = "none";
+    }
+
+    if (paymentStatus) {
+        paymentStatus.style.display = "none";
+    }
+
+    if (phoneInput) {
+        phoneInput.value = "";
+    }
+
+    if (customerNameInput) {
+        customerNameInput.value = "";
+    }
 
     if (payBtn) {
         payBtn.disabled = false;
@@ -839,29 +1068,32 @@ async function handlePaymentSuccess() {
     try {
         await refreshStock();
     } catch (error) {
-        console.error("Stock refresh after payment failed:", error);
+        console.error(
+            "Could not refresh stock after payment:",
+            error
+        );
     }
 
     alert("Payment successful! Your order has been received.");
 }
 
 // ======================================
-// CONFIRMED PAYMENT FAILURE
+// HANDLE CONFIRMED PAYMENT FAILURE
 // ======================================
 
 async function handlePaymentFailure(reason) {
     stopPaymentPolling();
 
-    // Call this only after the server confirms failure or cancellation.
+    // Clear the active browser order only after the backend
+    // confirms the payment has failed or been cancelled.
     savePendingOrder(null);
 
-    checkoutStageActive = false;
     paymentRequestInProgress = false;
     statusCheckInProgress = false;
 
     showPaymentMessage(
-        `${reason || "Payment failed or was cancelled."} ` +
-        "You may try checkout again after confirming the previous request ended."
+        (reason || "Payment failed.") +
+        " You can try checkout again after stock has refreshed."
     );
 
     if (payBtn) {
@@ -872,34 +1104,24 @@ async function handlePaymentFailure(reason) {
     try {
         await refreshStock();
     } catch (error) {
-        console.error("Stock refresh after failure failed:", error);
+        console.error(
+            "Stock refresh after failure failed:",
+            error
+        );
     }
 
     displayCart();
 }
 
 // ======================================
-// CHECK PAYMENT STATUS
-// Requires a backend route that validates
-// X-Customer-Phone against the order.
+// CHECK CURRENT PAYMENT STATUS
 // ======================================
 
 async function checkCurrentPaymentStatus() {
     if (!currentOrderId) {
-        showPaymentMessage("There is no pending order to check.");
-        return;
-    }
-
-    if (!currentOrderPhone) {
         showPaymentMessage(
-            "The saved customer phone number is missing. " +
-            "Contact the hotel to verify the existing order. Do not pay again."
+            "No pending order was found. You can continue checkout."
         );
-
-        if (payBtn) {
-            payBtn.disabled = true;
-            payBtn.textContent = "Order Needs Verification";
-        }
 
         return;
     }
@@ -908,30 +1130,30 @@ async function checkCurrentPaymentStatus() {
 
     statusCheckInProgress = true;
 
-    const orderId = String(currentOrderId);
+    const orderIdBeingChecked = String(currentOrderId);
 
     if (payBtn) {
         payBtn.disabled = true;
         payBtn.textContent = "Checking...";
     }
 
-    showPaymentMessage("Checking the existing M-Pesa payment...");
+    showPaymentMessage(
+        "Checking your M-Pesa payment status..."
+    );
 
     try {
         const data = await fetchJSON(
-            `${API_URL}/api/orders/payment-status/${encodeURIComponent(orderId)}`,
-            {
-                headers: {
-                    "X-Customer-Phone": currentOrderPhone
-                }
-            }
+            `${API_URL}/api/orders/payment-status/` +
+            encodeURIComponent(orderIdBeingChecked)
         );
 
-        if (String(currentOrderId) !== orderId) return;
+        if (String(currentOrderId) !== orderIdBeingChecked) {
+            return;
+        }
 
         const status = getPaymentStatus(data);
 
-        if (status === "paid" || status === "success" || status === "completed") {
+        if (status === "paid") {
             await handlePaymentSuccess();
             return;
         }
@@ -940,24 +1162,38 @@ async function checkCurrentPaymentStatus() {
             await handlePaymentFailure(
                 data.failureReason ||
                 data.order?.failureReason ||
-                "The server confirmed that payment failed or was cancelled."
+                "Payment failed or was cancelled."
             );
+
             return;
         }
 
+        if (
+            status !== "pending" &&
+            status !== "processing" &&
+            status !== ""
+        ) {
+            console.warn(
+                "Unrecognized payment status:",
+                data
+            );
+        }
+
         showPaymentMessage(
-            "Payment has not been confirmed yet. " +
-            "Do not make another payment while the result is unknown."
+            "Payment is not confirmed yet. We will check the existing order. " +
+            "Do not make another payment while its outcome is unknown."
         );
 
-        startPaymentPolling(orderId);
+        startPaymentPolling(orderIdBeingChecked);
     } catch (error) {
-        console.error("Payment status check failed:", error);
+        console.error(
+            "Payment status check failed:",
+            error
+        );
 
         showPaymentMessage(
-            `${error.message} If the backend still requires the old status token, ` +
-            "the status route must be updated before this check can work. " +
-            "Do not pay again while the outcome is unknown."
+            "We could not retrieve your payment status. Check your connection " +
+            "and try Check Payment Status again. Do not assume payment failed."
         );
 
         if (payBtn) {
@@ -973,159 +1209,202 @@ async function checkCurrentPaymentStatus() {
 // M-PESA PAYMENT BUTTON
 // ======================================
 
-payBtn?.addEventListener("click", async () => {
-    // Existing orders are checked, never charged again by this button.
-    if (currentOrderId) {
-        await checkCurrentPaymentStatus();
-        return;
-    }
-
-    if (paymentRequestInProgress || statusCheckInProgress) return;
-
-    const customerName = customerNameInput?.value.trim() || "";
-    const phone = normalizeKenyanPhone(phoneInput?.value);
-
-    if (!customerName) {
-        alert("Please enter your name.");
-        customerNameInput?.focus();
-        return;
-    }
-
-    if (!phone) {
-        alert(
-            "Enter a valid Kenyan phone number, for example 0712345678."
-        );
-        phoneInput?.focus();
-        return;
-    }
-
-    if (shoppingCart.length === 0) {
-        alert("Your shopping basket is empty.");
-        return;
-    }
-
-    paymentRequestInProgress = true;
-
-    payBtn.disabled = true;
-    payBtn.textContent = "Processing...";
-
-    showPaymentMessage("Checking stock...");
-
-    let orderCreated = false;
-
-    try {
-        await refreshStock();
-        validateCartAgainstStock();
-
-        showPaymentMessage("Creating your order...");
-
-        const orderData = await fetchJSON(`${API_URL}/api/orders`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                customer: {
-                    name: customerName,
-                    phone
-                },
-                items: shoppingCart.map(item => ({
-                    foodId: String(item.foodId),
-                    quantity: Number(item.quantity)
-                }))
-            })
-        });
-
-        const order = orderData.order || orderData;
-
-        if (!order._id) {
-            throw new Error(
-                "The server did not return an order ID. " +
-                "Check the order with the hotel before retrying."
-            );
-        }
-
-        // Save the order immediately so a browser/network error
-        // cannot cause the customer to create another order blindly.
-        savePendingOrder(order._id, phone);
-        orderCreated = true;
-        checkoutStageActive = true;
-
-        if (paymentBox) paymentBox.style.display = "block";
-
-        const totalPrice = Number(order.totalPrice);
-
-        if (!Number.isFinite(totalPrice) || totalPrice <= 0) {
-            showPaymentMessage(
-                "The order was created, but its total is invalid. " +
-                "Do not create another order; contact the hotel."
-            );
+if (payBtn) {
+    payBtn.addEventListener("click", async () => {
+        // If an active order exists, check it instead of sending
+        // another STK Push for the same order.
+        if (currentOrderId) {
+            await checkCurrentPaymentStatus();
             return;
         }
 
-        showPaymentMessage(
-            "Sending the M-Pesa request. Check your phone for the PIN prompt..."
-        );
+        if (
+            paymentRequestInProgress ||
+            statusCheckInProgress
+        ) {
+            return;
+        }
 
-        // Send one STK request for this order.
-        // If the request times out, do not automatically send it again.
-        const paymentData = await fetchJSON(`${API_URL}/api/mpesa/stkpush`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                phone,
-                amount: totalPrice,
-                orderId: String(order._id)
-            })
-        });
+        const customerName =
+            customerNameInput?.value.trim() || "";
 
-        if (paymentData.success === false) {
-            showPaymentMessage(
-                paymentData.message ||
-                "The payment request was not confirmed. Check the existing order's status before retrying."
+        const phone =
+            phoneInput?.value.trim() || "";
+
+        if (!customerName) {
+            alert(
+                "Please enter your name before making payment."
             );
-        } else {
+
+            customerNameInput?.focus();
+
+            return;
+        }
+
+        if (!/^07\d{8}$/.test(phone)) {
+            alert(
+                "Enter a valid M-Pesa number starting with 07, " +
+                "e.g. 0712345678."
+            );
+
+            phoneInput?.focus();
+
+            return;
+        }
+
+        if (shoppingCart.length === 0) {
+            alert("Your shopping basket is empty.");
+            return;
+        }
+
+        const mpesaPhone = "254" + phone.substring(1);
+
+        paymentRequestInProgress = true;
+
+        payBtn.disabled = true;
+        payBtn.textContent = "Processing...";
+
+        showPaymentMessage("Checking food stock...");
+
+        try {
+            await refreshStock();
+
+            validateCartAgainstStock();
+
+            showPaymentMessage("Creating your order...");
+
+            // Create the order first.
+            const orderData = await fetchJSON(
+                `${API_URL}/api/orders`,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        customer: {
+                            name: customerName,
+                            phone: mpesaPhone
+                        },
+
+                        items: shoppingCart.map(item => ({
+                            foodId: String(item.foodId),
+                            quantity: Number(item.quantity)
+                        }))
+                    })
+                }
+            );
+
+            const order = orderData.order || orderData;
+
+            if (!order._id) {
+                throw new Error(
+                    "The server did not return an order ID. " +
+                    "Verify the order before trying again."
+                );
+            }
+
+            // Save the order ID immediately. If the payment request
+            // times out, we can check this order instead of creating
+            // another payment request for the same order.
+            savePendingOrder(order._id);
+
             showPaymentMessage(
-                "M-Pesa request sent. Complete the prompt on your phone. " +
+                "Order created. Preparing your M-Pesa request..."
+            );
+
+            try {
+                await refreshStock();
+            } catch (refreshError) {
+                console.error(
+                    "Stock refresh after reservation failed:",
+                    refreshError
+                );
+            }
+
+            const totalPrice = Number(order.totalPrice);
+
+            if (
+                !Number.isFinite(totalPrice) ||
+                totalPrice <= 0
+            ) {
+                throw new Error(
+                    "The server returned an invalid order total. " +
+                    "Check this order's status before retrying."
+                );
+            }
+
+            showPaymentMessage(
+                "Sending the M-Pesa request. Check your phone for the PIN prompt..."
+            );
+
+            const paymentData = await fetchJSON(
+                `${API_URL}/api/mpesa/stkpush`,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        phone: mpesaPhone,
+                        amount: totalPrice,
+                        orderId: currentOrderId
+                    })
+                }
+            );
+
+            if (paymentData.success === false) {
+                throw new Error(
+                    paymentData.message ||
+                    "The payment request was not confirmed."
+                );
+            }
+
+            showPaymentMessage(
+                "Check your phone for the M-Pesa PIN prompt. " +
                 "Waiting for confirmation..."
             );
-        }
 
-        startPaymentPolling(String(order._id));
-    } catch (error) {
-        console.error("PAYMENT ERROR:", error);
+            startPaymentPolling(currentOrderId);
+        } catch (error) {
+            console.error("PAYMENT ERROR:", error);
 
-        showPaymentMessage(
-            `${error.message || "An error occurred."} ` +
-            (
-                orderCreated
-                    ? "The order has been saved. Check its status before taking any further payment action."
-                    : "No order ID was saved by this browser. Verify the server before trying again."
-            )
-        );
+            showPaymentMessage(
+                `${error.message || "An error occurred."} ` +
+                (
+                    currentOrderId
+                        ? "Check the existing order's status before trying again."
+                        : "You can correct the issue and try checkout again."
+                )
+            );
 
-        if (currentOrderId) {
-            if (payBtn) {
+            if (currentOrderId) {
+                // The STK request may have reached Safaricom even if
+                // the browser received an error. Do not resend it here.
                 payBtn.disabled = false;
                 payBtn.textContent = "Check Payment Status";
+
+                startPaymentPolling(currentOrderId);
+            } else {
+                payBtn.disabled = false;
+                payBtn.textContent = "Pay Now";
             }
-        } else if (payBtn) {
-            payBtn.disabled = false;
-            payBtn.textContent = "Pay Now";
+        } finally {
+            paymentRequestInProgress = false;
         }
-    } finally {
-        paymentRequestInProgress = false;
-    }
-});
+    });
+}
 
 // ======================================
 // PAYMENT STATUS POLLING
 // ======================================
 
 function startPaymentPolling(orderId) {
-    if (!orderId || !currentOrderPhone) return;
+    if (!orderId) return;
 
     const id = String(orderId);
 
@@ -1137,22 +1416,27 @@ function startPaymentPolling(orderId) {
     }
 
     stopPaymentPolling();
+
     paymentPollingOrderId = id;
 
     let attempts = 0;
-    let requestRunning = false;
-
     const maxAttempts = 60;
     const intervalMs = 3000;
+    let requestRunning = false;
 
     if (payBtn) {
         payBtn.disabled = true;
         payBtn.textContent = "Awaiting Confirmation";
     }
 
+    showPaymentMessage(
+        "Waiting for M-Pesa payment confirmation..."
+    );
+
     paymentPollingInterval = setInterval(async () => {
         if (requestRunning) return;
 
+        // Do not let an old polling request affect a newer order.
         if (String(currentOrderId) !== id) {
             stopPaymentPolling();
             return;
@@ -1163,29 +1447,28 @@ function startPaymentPolling(orderId) {
 
         try {
             const data = await fetchJSON(
-                `${API_URL}/api/orders/payment-status/${encodeURIComponent(id)}`,
-                {
-                    headers: {
-                        "X-Customer-Phone": currentOrderPhone
-                    }
-                }
+                `${API_URL}/api/orders/payment-status/` +
+                encodeURIComponent(id)
             );
 
-            if (String(currentOrderId) !== id) return;
-
-            const status = getPaymentStatus(data);
-
-            if (
-                status === "paid" ||
-                status === "success" ||
-                status === "completed"
-            ) {
-                stopPaymentPolling();
-                await handlePaymentSuccess();
+            if (String(currentOrderId) !== id) {
                 return;
             }
 
-            if (status === "failed" || status === "cancelled") {
+            const status = getPaymentStatus(data);
+
+            if (status === "paid") {
+                stopPaymentPolling();
+
+                await handlePaymentSuccess();
+
+                return;
+            }
+
+            if (
+                status === "failed" ||
+                status === "cancelled"
+            ) {
                 stopPaymentPolling();
 
                 await handlePaymentFailure(
@@ -1198,14 +1481,18 @@ function startPaymentPolling(orderId) {
             }
 
             showPaymentMessage(
-                "Waiting for M-Pesa confirmation. Do not pay again while this order is unresolved."
+                "Waiting for M-Pesa confirmation. " +
+                "If this takes too long, you can check the status again."
             );
         } catch (error) {
-            console.error("Payment polling error:", error);
+            console.error(
+                "Payment status polling error:",
+                error
+            );
 
             showPaymentMessage(
-                "The server could not confirm payment status. " +
-                "The order remains saved. Do not make another payment."
+                "We temporarily could not check your payment status. " +
+                "Your order is saved; do not pay again until its status is confirmed."
             );
         } finally {
             requestRunning = false;
@@ -1219,14 +1506,16 @@ function startPaymentPolling(orderId) {
 
             showPaymentMessage(
                 "Confirmation is taking longer than expected. " +
-                "Check your M-Pesa messages and use Check Payment Status. " +
-                "This timeout does not mean payment failed."
+                "Check your M-Pesa messages, then click Check Payment Status. " +
+                "The payment has NOT been assumed to have failed."
             );
 
             if (payBtn) {
                 payBtn.disabled = false;
                 payBtn.textContent = "Check Payment Status";
             }
+
+            paymentRequestInProgress = false;
         }
     }, intervalMs);
 }
@@ -1238,41 +1527,33 @@ function startPaymentPolling(orderId) {
 displayCart();
 
 loadFoods().catch(() => {
-    // The error is already logged and displayed.
+    // The loading error is already logged and displayed.
 });
 
 if (currentOrderId) {
-    checkoutStageActive = true;
+    if (paymentBox) {
+        paymentBox.style.display = "block";
+    }
 
-    if (paymentBox) paymentBox.style.display = "block";
-    if (checkoutBtn) checkoutBtn.style.display = "none";
+    // Hide Checkout while an order is awaiting payment confirmation.
+    if (checkoutBtn) {
+        checkoutBtn.style.display = "none";
+    }
 
     showPaymentMessage(
-        "An existing order was found. Checking its payment status. " +
-        "Do not submit another payment."
+        "An order is awaiting payment confirmation. Checking its status..."
     );
 
-    if (currentOrderPhone) {
-        startPaymentPolling(currentOrderId);
-    } else {
-        showPaymentMessage(
-            "An existing order was found, but its customer phone number " +
-            "is missing. Contact the hotel to verify the order before paying again."
-        );
-
-        if (payBtn) {
-            payBtn.disabled = true;
-            payBtn.textContent = "Order Needs Verification";
-        }
-    }
+    startPaymentPolling(currentOrderId);
 }
+    
 
-// ======================================
-// REFRESH FOOD AND STOCK EVERY 30 SECONDS
-// ======================================
-
+// Refresh food and stock information every 30 seconds.
 setInterval(() => {
     loadFoods().catch(error => {
-        console.error("Automatic food refresh failed:", error);
+        console.error(
+            "Automatic food refresh failed:",
+            error
+        );
     });
 }, 30000);
