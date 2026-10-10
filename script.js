@@ -576,7 +576,7 @@ if (shoppingCart.length === 0) {
     cartTotal.textContent = "0";
     cartCount.textContent = "0";
 
-    checkoutBtn.style.display = checkoutStageActive ? "none" : "block";
+    checkoutBtn.style.display = "block";
     checkoutBtn.disabled = true;
     checkoutBtn.style.opacity = "0.5";
     checkoutBtn.style.cursor = "not-allowed";
@@ -979,8 +979,14 @@ if (checkoutBtn) {
 
                 // Clear only the active browser reference.
                 // The order itself remains in the database.
-                savePendingOrder(null);
+               // Clear only the active browser reference.
+// Keep the previous order saved in the database.
+savePendingOrder(null);
 
+// Allow the customer to start a new checkout.
+checkoutStageActive = false;
+paymentRequestInProgress = false;
+statusCheckInProgress = false;
                 console.warn(
                     "Previous order remains unresolved:",
                     previousOrderId
@@ -1535,18 +1541,18 @@ if (currentOrderId) {
         paymentBox.style.display = "block";
     }
 
-    // Hide Checkout while an order is awaiting payment confirmation.
+    // Keep Checkout available for a new order.
     if (checkoutBtn) {
-        checkoutBtn.style.display = "none";
+        checkoutBtn.style.display = "block";
     }
 
     showPaymentMessage(
-        "An order is awaiting payment confirmation. Checking its status..."
+        "Your previous order is awaiting confirmation. " +
+        "Its status is still being checked. Verify it before making another payment."
     );
 
     startPaymentPolling(currentOrderId);
 }
-    
 
 // Refresh food and stock information every 30 seconds.
 setInterval(() => {
