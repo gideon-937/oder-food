@@ -6,10 +6,6 @@ import { releaseStockReservation } from "../utils/stockReservation.js";
 
 /**
  * Normalize Kenyan phone numbers.
- * Examples:
- * 0712345678 -> 254712345678
- * 0112345678 -> 254112345678
- * +254712345678 -> 254712345678
  */
 const normalizePhone = (phone) => {
     if (phone === undefined || phone === null) {
@@ -30,7 +26,7 @@ const normalizePhone = (phone) => {
 };
 
 /**
- * Send an M-Pesa callback acknowledgement.
+ * Acknowledge a callback already handled or safely recorded.
  */
 const acknowledgeCallback = (res) => {
     return res.status(200).json({
@@ -40,15 +36,18 @@ const acknowledgeCallback = (res) => {
 };
 
 /**
- * Initiate M-Pesa STK Push.
+ * Initiate an M-Pesa STK Push.
+ *
+ * Atomically claims an order before calling Safaricom.
+ * Never automatically clear a claim after an uncertain result.
  */
 export const initiatePayment = async (req, res) => {
-    try {
-        const { orderId, phone } = req.body;
+    let claimedOrderId = null;
 
-        // Validate order ID.
+    try {
+        const { orderId, phone } = req.body ?? {};
+
         if (
-            !orderId ||
             typeof orderId !== "string" ||
             !mongoose.isValidObjectId(orderId)
         ) {
@@ -58,8 +57,7 @@ export const initiatePayment = async (req, res) => {
             });
         }
 
-        // Validate phone number.
-        if (!phone || typeof phone !== "string") {
+        if (typeof phone !== "string" || !phone.trim()) {
             return res.status(400).json({
                 success: false,
                 message: "A valid Kenyan phone number is required."
@@ -78,7 +76,6 @@ export const initiatePayment = async (req, res) => {
             });
         }
 
-        // Find the order.
         const order = await Order.findById(orderId);
 
         if (!order) {
@@ -88,57 +85,52 @@ export const initiatePayment = async (req, res) => {
             });
         }
 
-        // Do not initiate payment for an already-paid order.
         if (order.paymentStatus === "Paid") {
-            return res.status(400).json({
+            return res.status(409).json({
                 success: false,
                 message: "This order has already been paid."
             });
         }
 
-        // Failed orders must be recreated with fresh stock.
         if (order.paymentStatus === "Failed") {
-            return res.status(400).json({
-                success: false,
-                message: "This order failed. Please create a new order."
-            });
-        }
-
-        // The order must have reserved stock.
-        if (order.stockReserved !== true) {
             return res.status(409).json({
                 success: false,
                 message:
-                    "Stock is not reserved for this order. Please create a new order."
+                    "This order has failed. Check its payment outcome before creating another order."
             });
         }
 
-        // Prevent duplicate STK requests for the same order.
-        if (order.checkoutRequestId) {
+        if (order.stockReserved !== true) {
             return res.status(409).json({
                 success: false,
-                message: "Payment is already being processed."
+                message: "Stock is not reserved for this order."
             });
         }
 
-        // Check the order phone.
+        if (
+            order.checkoutRequestId ||
+            order.paymentInitiationClaimed === true
+        ) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "A payment request already exists or is being processed. Check its status before taking further action."
+            });
+        }
+
         const orderPhone = normalizePhone(order.customer?.phone);
 
-        if (
-            !orderPhone ||
-            orderPhone !== normalizedPhone
-        ) {
+        if (!orderPhone || orderPhone !== normalizedPhone) {
             return res.status(400).json({
                 success: false,
                 message: "Phone number does not match the order."
             });
         }
 
-        // Validate the amount.
         const totalAmount = Number(order.totalPrice);
 
         if (
-            !Number.isFinite(totalAmount) ||
+            !Number.isSafeInteger(totalAmount) ||
             totalAmount <= 0
         ) {
             return res.status(400).json({
@@ -147,65 +139,133 @@ export const initiatePayment = async (req, res) => {
             });
         }
 
-        /*
-         * Do not automatically release stock if stkPush throws.
-         * The request may have reached Safaricom even if the
-         * application did not receive its response.
-         */
+        // Claim the order atomically before contacting Safaricom.
+        const claimedOrder = await Order.findOneAndUpdate(
+            {
+                _id: order._id,
+                paymentStatus: "Pending",
+                stockReserved: true,
+                paymentInitiationClaimed: { $ne: true },
+                checkoutRequestId: { $in: [null, ""] }
+            },
+            {
+                $set: {
+                    paymentInitiationClaimed: true
+                }
+            },
+            {
+                new: true
+            }
+        );
 
+        if (!claimedOrder) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "This order has already been claimed for payment. Check its status before taking further action."
+            });
+        }
+
+        claimedOrderId = claimedOrder._id;
+
+        /*
+         * Safaricom may receive the request even if this call
+         * times out. Never automatically release the claim.
+         */
         const response = await stkPush(
             normalizedPhone,
             totalAmount,
-            order._id.toString()
+            claimedOrder._id.toString()
         );
 
         if (
             !response ||
+            typeof response.CheckoutRequestID !== "string" ||
             !response.CheckoutRequestID ||
+            typeof response.MerchantRequestID !== "string" ||
             !response.MerchantRequestID
         ) {
-            console.error("Invalid STK response:", response);
+            console.error(
+                "Incomplete STK response; reconciliation required:",
+                claimedOrder._id.toString()
+            );
 
             return res.status(502).json({
                 success: false,
                 message:
-                    "The payment request result is uncertain. Check the order before retrying."
+                    "The payment outcome is uncertain. Do not retry or pay again until the transaction is checked."
             });
         }
 
         /*
-         * Save the identifiers before returning success so
-         * the callback can locate the order.
+         * Save Safaricom identifiers only if the order is
+         * still eligible for this update.
          */
-        order.checkoutRequestId = response.CheckoutRequestID;
-        order.merchantRequestId = response.MerchantRequestID;
-        order.paymentStatus = "Pending";
+        const savedOrder = await Order.findOneAndUpdate(
+            {
+                _id: claimedOrder._id,
+                paymentStatus: "Pending",
+                stockReserved: true,
+                paymentInitiationClaimed: true,
+                checkoutRequestId: { $in: [null, ""] }
+            },
+            {
+                $set: {
+                    checkoutRequestId: response.CheckoutRequestID,
+                    merchantRequestId: response.MerchantRequestID
+                }
+            },
+            {
+                new: true
+            }
+        );
 
-        await order.save();
+        if (!savedOrder) {
+            console.error(
+                "STK response received but identifiers were not saved. Reconciliation required:",
+                claimedOrder._id.toString(),
+                response.CheckoutRequestID
+            );
+
+            return res.status(409).json({
+                success: false,
+                message:
+                    "Safaricom may have received the payment request, but the order could not be updated. Do not retry; reconcile the transaction first."
+            });
+        }
 
         console.log(
             "M-Pesa STK initiated for order:",
-            order._id.toString()
+            savedOrder._id.toString()
         );
 
         return res.status(200).json({
             success: true,
             message: "STK Push sent successfully.",
-            checkoutRequestId: response.CheckoutRequestID
+            checkoutRequestId: savedOrder.checkoutRequestId
         });
     } catch (error) {
-        console.error("STK Push Controller Error:", error);
+        console.error("STK Push Controller Error:", {
+            orderId: claimedOrderId?.toString() ?? null,
+            message: error.message
+        });
 
         return res.status(500).json({
             success: false,
             message:
-                "The payment request result may be uncertain. Check payment status before retrying."
+                "The payment outcome may be uncertain. Do not retry until the transaction has been checked."
         });
     }
 };
 
 /**
- * M-Pesa STK Push callback.
+ * Process an M-Pesa STK callback.
+ *
+ * A successful payment is recorded only after validating
+ * the receipt, amount, and phone number.
+ *
+ * A late success for a failed order is recorded for
+ * reconciliation, not automatically marked Paid.
  */
 export const mpesaCallback = async (req, res) => {
     try {
@@ -214,8 +274,6 @@ export const mpesaCallback = async (req, res) => {
         const callback = req.body?.Body?.stkCallback;
 
         if (!callback) {
-            console.error("Invalid M-Pesa callback structure");
-
             return res.status(400).json({
                 ResultCode: 1,
                 ResultDesc: "Invalid callback structure"
@@ -229,9 +287,10 @@ export const mpesaCallback = async (req, res) => {
             CallbackMetadata
         } = callback;
 
-        if (!CheckoutRequestID) {
-            console.error("Missing CheckoutRequestID");
-
+        if (
+            typeof CheckoutRequestID !== "string" ||
+            !CheckoutRequestID
+        ) {
             return res.status(400).json({
                 ResultCode: 1,
                 ResultDesc: "Missing CheckoutRequestID"
@@ -243,70 +302,30 @@ export const mpesaCallback = async (req, res) => {
         });
 
         if (!order) {
+            /*
+             * This can occur if the callback arrives before
+             * the CheckoutRequestID is saved. Record the issue
+             * for operational reconciliation.
+             */
             console.error(
                 "No order found for CheckoutRequestID:",
-                CheckoutRequestID
+                CheckoutRequestID,
+                "Reconciliation required."
             );
 
-            /*
-             * Acknowledge unknown callbacks to avoid endless
-             * retries. Investigate them using server logs.
-             */
-            return acknowledgeCallback(res);
+            return res.status(500).json({
+                ResultCode: 1,
+                ResultDesc: "Order not found for this callback"
+            });
         }
 
-        /*
-         * Idempotency: a duplicate success callback must not
-         * change stock or process the order a second time.
-         */
-        if (order.paymentStatus === "Paid") {
-            console.log(
-                "Duplicate payment callback ignored:",
-                order._id.toString()
-            );
-
-            return acknowledgeCallback(res);
-        }
-
-        /*
-         * Ignore duplicate callbacks for an order already
-         * marked Failed. A late success requires reconciliation.
-         */
-        if (order.paymentStatus === "Failed") {
-            console.error(
-                "Callback received for failed order; reconciliation may be required:",
-                order._id.toString(),
-                ResultCode
-            );
-
-            return acknowledgeCallback(res);
-        }
-
-        // Confirmed M-Pesa failure: release stock exactly once.
-        if (Number(ResultCode) !== 0) {
-            const reason =
-                ResultDesc || "M-Pesa payment failed.";
-
-            await releaseStockReservation(order._id, reason);
-
-            console.log(
-                "Payment failure processed:",
-                order._id.toString(),
-                reason
-            );
-
-            return acknowledgeCallback(res);
-        }
-
-        /*
-         * ResultCode 0 means M-Pesa reports success.
-         * Extract payment metadata before changing order status.
-         */
-        const items = CallbackMetadata?.Item || [];
+        const items = Array.isArray(CallbackMetadata?.Item)
+            ? CallbackMetadata.Item
+            : [];
 
         const getValue = (name) => {
             const item = items.find(
-                entry => entry?.Name === name
+                (entry) => entry?.Name === name
             );
 
             return item?.Value ?? null;
@@ -320,130 +339,245 @@ export const mpesaCallback = async (req, res) => {
         const amountPaid = Number(rawAmount);
         const expectedAmount = Number(order.totalPrice);
 
+        const expectedPhone = normalizePhone(order.customer?.phone);
+        const paidPhone = normalizePhone(phoneNumber);
+
         /*
-         * A successful M-Pesa payment with invalid metadata
-         * must not be treated as an ordinary payment failure.
-         * Keep stock reserved and flag the order for review.
+         * A duplicate callback for an already-paid order must
+         * not apply the payment transition a second time.
          */
-        if (
-            !mpesaReceiptNumber ||
-            typeof mpesaReceiptNumber !== "string" ||
-            !Number.isFinite(amountPaid) ||
-            !Number.isFinite(expectedAmount)
-        ) {
-            order.failureReason =
-                "Successful callback has incomplete payment metadata. Manual reconciliation required.";
-
-            await order.save();
-
-            console.error(
-                "Incomplete successful payment metadata:",
+        if (order.paymentStatus === "Paid") {
+            console.log(
+                "Duplicate callback ignored for paid order:",
                 order._id.toString()
             );
 
             return acknowledgeCallback(res);
         }
 
-        // Validate amount.
-        if (amountPaid !== expectedAmount) {
-            order.failureReason =
-                "Payment amount mismatch. Manual reconciliation required.";
+        /*
+         * Handle a possible late successful payment after the
+         * order was marked Failed and stock was released.
+         *
+         * Do not change Failed to Paid automatically: stock may
+         * already have been sold to another customer.
+         */
+        if (order.paymentStatus === "Failed") {
+            if (Number(ResultCode) === 0) {
+                const reconciliationReason =
+                    "LATE M-PESA SUCCESS: payment reported successful after order failure. Verify the transaction and stock before resolving.";
 
-            order.amountPaid = amountPaid;
-            order.mpesaReceiptNumber = mpesaReceiptNumber;
-            order.phoneNumber = phoneNumber ?? undefined;
-            order.transactionDate = transactionDate ?? undefined;
+                const evidence = {
+                    failureReason: reconciliationReason,
+                    reconciliationRequired: true,
+                    ...(typeof mpesaReceiptNumber === "string"
+                        ? { mpesaReceiptNumber }
+                        : {}),
+                    ...(rawAmount !== null &&
+                    Number.isFinite(amountPaid)
+                        ? { amountPaid }
+                        : {}),
+                    ...(phoneNumber !== null
+                        ? { phoneNumber: String(phoneNumber) }
+                        : {}),
+                    ...(transactionDate !== null
+                        ? { transactionDate: String(transactionDate) }
+                        : {})
+                };
 
-            await order.save();
+                await Order.updateOne(
+                    {
+                        _id: order._id,
+                        paymentStatus: "Failed"
+                    },
+                    {
+                        $set: evidence
+                    }
+                );
 
-            console.error("M-Pesa amount mismatch:", {
-                orderId: order._id.toString(),
-                expectedAmount,
-                amountPaid
-            });
+                console.error(
+                    reconciliationReason,
+                    "Order:",
+                    order._id.toString(),
+                    "Receipt:",
+                    mpesaReceiptNumber
+                );
+            } else {
+                console.warn(
+                    "Callback received for an already-failed order:",
+                    order._id.toString(),
+                    "ResultCode:",
+                    ResultCode
+                );
+            }
 
-            // Do not release stock: money may have been received.
             return acknowledgeCallback(res);
         }
 
-        // Validate payment phone.
-        const expectedPhone = normalizePhone(order.customer?.phone);
-        const paidPhone = normalizePhone(phoneNumber);
+        /*
+         * A confirmed payment failure may release stock only
+         * while the order is Pending and stock is reserved.
+         */
+        if (Number(ResultCode) !== 0) {
+            const released = await releaseStockReservation(
+                order._id,
+                ResultDesc || "M-Pesa payment failed."
+            );
+
+            if (!released) {
+                const currentOrder = await Order.findById(order._id)
+                    .select("paymentStatus stockReserved");
+
+                console.error(
+                    "Failure callback could not release stock or the order had changed:",
+                    order._id.toString(),
+                    currentOrder?.paymentStatus,
+                    currentOrder?.stockReserved
+                );
+            } else {
+                console.log(
+                    "Payment failure processed and stock released:",
+                    order._id.toString()
+                );
+            }
+
+            return acknowledgeCallback(res);
+        }
+
+        // Safaricom reported success. Validate the callback metadata.
+        let reconciliationReason = null;
 
         if (
+            typeof mpesaReceiptNumber !== "string" ||
+            !mpesaReceiptNumber.trim() ||
+            rawAmount === null ||
+            !Number.isFinite(amountPaid) ||
+            !Number.isFinite(expectedAmount)
+        ) {
+            reconciliationReason =
+                "Successful callback has incomplete payment metadata. Manual reconciliation required.";
+        } else if (amountPaid !== expectedAmount) {
+            reconciliationReason =
+                "Payment amount mismatch. Manual reconciliation required.";
+        } else if (
             !expectedPhone ||
             !paidPhone ||
             expectedPhone !== paidPhone
         ) {
-            order.failureReason =
+            reconciliationReason =
                 "Payment phone mismatch. Manual reconciliation required.";
-
-            order.amountPaid = amountPaid;
-            order.mpesaReceiptNumber = mpesaReceiptNumber;
-            order.phoneNumber = phoneNumber ?? undefined;
-            order.transactionDate = transactionDate ?? undefined;
-
-            await order.save();
-
-            console.error("M-Pesa phone mismatch:", {
-                orderId: order._id.toString(),
-                expectedPhone,
-                paidPhone
-            });
-
-            // Do not release stock for a reported successful payment.
-            return acknowledgeCallback(res);
         }
 
-        // Verify stock is still reserved.
-        if (order.stockReserved !== true) {
-            order.failureReason =
-                "M-Pesa reports successful payment, but stock is not reserved. Manual reconciliation required.";
+        if (reconciliationReason) {
+            /*
+             * Do not mark the order Paid or release stock when
+             * successful callback metadata is incomplete/mismatched.
+             */
+            const evidence = {
+                failureReason: reconciliationReason,
+                    reconciliationRequired: true,
+                ...(Number.isFinite(amountPaid)
+                    ? { amountPaid }
+                    : {}),
+                ...(typeof mpesaReceiptNumber === "string"
+                    ? { mpesaReceiptNumber }
+                    : {}),
+                ...(phoneNumber !== null
+                    ? { phoneNumber: String(phoneNumber) }
+                    : {}),
+                ...(transactionDate !== null
+                    ? { transactionDate: String(transactionDate) }
+                    : {})
+            };
 
-            order.amountPaid = amountPaid;
-            order.mpesaReceiptNumber = mpesaReceiptNumber;
-            order.phoneNumber = phoneNumber;
-            order.transactionDate = transactionDate ?? undefined;
-
-            await order.save();
-
-            console.error(
-                "Paid transaction requires reconciliation; stock is not reserved:",
-                order._id.toString()
+            const flaggedOrder = await Order.findOneAndUpdate(
+                {
+                    _id: order._id,
+                    paymentStatus: "Pending",
+                    stockReserved: true
+                },
+                {
+                    $set: evidence
+                },
+                {
+                    new: true
+                }
             );
+
+            if (!flaggedOrder) {
+                console.error(
+                    "Payment metadata needs reconciliation, but order state changed concurrently:",
+                    order._id.toString()
+                );
+            } else {
+                console.error(
+                    reconciliationReason,
+                    "Order:",
+                    order._id.toString()
+                );
+            }
 
             return acknowledgeCallback(res);
         }
 
         /*
-         * Mark payment successful.
-         * Stock is not deducted here because createOrder
-         * already reserved it.
+         * Mark the order Paid only if it remains Pending and
+         * its stock reservation is still active.
          */
-        order.paymentStatus = "Paid";
-        order.orderStatus = "Processing";
-        order.mpesaReceiptNumber = mpesaReceiptNumber;
-        order.amountPaid = amountPaid;
-        order.phoneNumber = phoneNumber;
-        order.transactionDate = transactionDate ?? undefined;
-        order.failureReason = undefined;
+        const paidOrder = await Order.findOneAndUpdate(
+            {
+                _id: order._id,
+                paymentStatus: "Pending",
+                stockReserved: true
+            },
+            {
+                $set: {
+                    paymentStatus: "Paid",
+                    orderStatus: "Processing",
+                    reconciliationRequired: false,
+                    mpesaReceiptNumber,
+                    amountPaid,
+                    phoneNumber: String(phoneNumber),
+                    ...(transactionDate !== null
+                        ? { transactionDate: String(transactionDate) }
+                        : {})
+                },
+                $unset: {
+                    failureReason: ""
+                }
+            },
+            {
+                new: true,
+                runValidators: true
+            }
+        );
 
-        await order.save();
+        if (!paidOrder) {
+            const currentOrder = await Order.findById(order._id)
+                .select("paymentStatus stockReserved");
+
+            console.error(
+                "Could not mark payment Paid because the order changed concurrently. Reconciliation required:",
+                order._id.toString(),
+                currentOrder?.paymentStatus,
+                currentOrder?.stockReserved
+            );
+
+            // Safaricom reported success. Never restore stock here.
+            return acknowledgeCallback(res);
+        }
 
         console.log(
             "Payment successful. Order updated:",
-            order._id.toString()
+            paidOrder._id.toString(),
+            "Receipt:",
+            paidOrder.mpesaReceiptNumber
         );
 
         return acknowledgeCallback(res);
     } catch (error) {
         console.error("M-Pesa Callback Error:", error);
 
-        /*
-         * Acknowledge with an error so the callback can be
-         * investigated and, depending on Safaricom's retry
-         * behaviour, retried. Never release stock in this catch.
-         */
         return res.status(500).json({
             ResultCode: 1,
             ResultDesc: "Callback processing failed"

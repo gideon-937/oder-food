@@ -19,7 +19,6 @@ const orderSchema = new mongoose.Schema({
 
     items: [
         {
-            // Links the order item to the actual food in the database
             foodId: {
                 type: mongoose.Schema.Types.ObjectId,
                 ref: "Food",
@@ -62,7 +61,15 @@ const orderSchema = new mongoose.Schema({
     merchantRequestId: {
         type: String
     },
-        // Store only the hash of the customer's private status token.
+
+    // Prevent concurrent requests from initiating duplicate STK Pushes.
+    // Keep the claim if the outcome is uncertain until reconciliation.
+    paymentInitiationClaimed: {
+        type: Boolean,
+        default: false
+    },
+
+    // Store only the hash of the customer's private status token.
     paymentStatusTokenHash: {
         type: String,
         select: false
@@ -80,9 +87,14 @@ const orderSchema = new mongoose.Schema({
 
     failureReason: String,
 
-    // True when stock has been reserved for a pending payment.
-    // Successful payments consume the reserved stock.
-    // Failed payments should release it exactly once.
+    // Flag orders whose payment outcome requires investigation.
+    reconciliationRequired: {
+        type: Boolean,
+        default: false
+    },
+
+    // Stock is reserved when the order is created.
+    // Release it only after a confirmed payment failure.
     stockReserved: {
         type: Boolean,
         default: false
@@ -104,4 +116,3 @@ const orderSchema = new mongoose.Schema({
 });
 
 export default mongoose.model("Order", orderSchema);
-

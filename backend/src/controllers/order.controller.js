@@ -9,12 +9,16 @@ import Food from "../models/food.model.js";
 // ======================================
 
 export const createOrder = async (req, res) => {
+    const statusToken = crypto.randomBytes(32).toString("hex");
+
+    const statusTokenHash = crypto
+        .createHash("sha256")
+        .update(statusToken)
+        .digest("hex");
+
     const { customer, items } = req.body;
 
-    // --------------------------------------
     // VALIDATE CUSTOMER
-    // --------------------------------------
-
     if (
         !customer ||
         typeof customer.name !== "string" ||
@@ -43,21 +47,7 @@ export const createOrder = async (req, res) => {
         });
     }
 
-    // --------------------------------------
-    // GENERATE CUSTOMER PAYMENT-STATUS TOKEN
-    // --------------------------------------
-
-    const statusToken = crypto.randomBytes(32).toString("hex");
-
-    const statusTokenHash = crypto
-        .createHash("sha256")
-        .update(statusToken)
-        .digest("hex");
-
-    // --------------------------------------
     // VALIDATE CART
-    // --------------------------------------
-
     if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({
             success: false,
@@ -72,10 +62,7 @@ export const createOrder = async (req, res) => {
         });
     }
 
-    // --------------------------------------
     // VALIDATE ITEMS AND COMBINE DUPLICATES
-    // --------------------------------------
-
     const cartMap = new Map();
 
     for (const item of items) {
@@ -122,10 +109,7 @@ export const createOrder = async (req, res) => {
     let createdOrder;
 
     try {
-        // ======================================
         // ATOMIC STOCK RESERVATION + ORDER CREATION
-        // ======================================
-
         await session.withTransaction(async () => {
             const foodIds = [...cartMap.keys()];
 
@@ -145,10 +129,7 @@ export const createOrder = async (req, res) => {
             const secureItems = [];
             let totalPrice = 0;
 
-            // --------------------------------------
             // CHECK FOOD AND CALCULATE OFFICIAL PRICE
-            // --------------------------------------
-
             for (const [foodId, quantity] of cartMap.entries()) {
                 const food = foodMap.get(foodId);
 
@@ -221,10 +202,7 @@ export const createOrder = async (req, res) => {
 
             totalPrice = Number(totalPrice.toFixed(2));
 
-            // --------------------------------------
             // DEDUCT STOCK SAFELY
-            // --------------------------------------
-
             for (const [foodId, quantity] of cartMap.entries()) {
                 const updatedFood = await Food.findOneAndUpdate(
                     {
@@ -262,10 +240,7 @@ export const createOrder = async (req, res) => {
                 });
             }
 
-            // --------------------------------------
             // CREATE ORDER WITH ACTIVE RESERVATION
-            // --------------------------------------
-
             const orders = await Order.create(
                 [
                     {
@@ -278,8 +253,6 @@ export const createOrder = async (req, res) => {
                         paymentStatus: "Pending",
                         orderStatus: "Pending",
                         stockReserved: true,
-
-                        // Store the hash, never the plaintext token.
                         paymentStatusTokenHash: statusTokenHash
                     }
                 ],
@@ -289,10 +262,7 @@ export const createOrder = async (req, res) => {
             createdOrder = orders[0];
         });
 
-        // --------------------------------------
         // LOG SUCCESSFUL ORDER CREATION
-        // --------------------------------------
-
         console.log("===== ORDER CREATED; STOCK RESERVED =====");
 
         console.log({
@@ -302,19 +272,15 @@ export const createOrder = async (req, res) => {
             stockReserved: createdOrder.stockReserved
         });
 
-        // --------------------------------------
-        // RETURN ORDER AND TOKEN ONCE
-        // --------------------------------------
+        // NEVER EXPOSE THE STORED TOKEN HASH
+        const safeOrder = createdOrder.toObject();
+        delete safeOrder.paymentStatusTokenHash;
 
-        const orderResponse = createdOrder.toObject();
-
-        // Never expose the stored hash in the API response.
-        delete orderResponse.paymentStatusTokenHash;
-
+        // RETURN THE PLAINTEXT TOKEN ONCE
         return res.status(201).json({
             success: true,
             message: "Order created and food stock reserved successfully.",
-            order: orderResponse,
+            order: safeOrder,
             statusToken
         });
 
@@ -367,7 +333,7 @@ export const getOrders = async (req, res) => {
 
 // ======================================
 // GET SINGLE ORDER BY ID
-// Used by kitchen
+// USED BY KITCHEN
 // ======================================
 
 export const getOrderById = async (req, res) => {
@@ -408,17 +374,13 @@ export const getOrderById = async (req, res) => {
 
 // ======================================
 // GET PAYMENT STATUS
-// Requires the customer's private status token
+// REQUIRES THE CUSTOMER'S PRIVATE TOKEN
 // ======================================
 
 export const getPaymentStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const suppliedToken = req.get("X-Order-Status-Token");
-
-        // --------------------------------------
-        // VALIDATE ORDER ID
-        // --------------------------------------
+        const token = req.get("X-Order-Status-Token");
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({
@@ -427,68 +389,46 @@ export const getPaymentStatus = async (req, res) => {
             });
         }
 
-        // --------------------------------------
-        // VALIDATE TOKEN FORMAT
-        // --------------------------------------
-
         if (
-            typeof suppliedToken !== "string" ||
-            !/^[a-f0-9]{64}$/i.test(suppliedToken)
+            typeof token !== "string" ||
+            !/^[a-f0-9]{64}$/i.test(token)
         ) {
             return res.status(401).json({
                 success: false,
-                message: "Order status authorization required."
+                message: "Valid payment-status token required."
             });
         }
 
-        // --------------------------------------
-        // LOAD ORDER AND TOKEN HASH
-        // --------------------------------------
-
+        // EXPLICITLY SELECT THE HASH BECAUSE THE SCHEMA USES select: false
         const order = await Order.findById(id).select(
-            "+paymentStatusTokenHash paymentStatus failureReason orderStatus"
+            "+paymentStatusTokenHash paymentStatus failureReason reconciliationRequired orderStatus"
         );
 
-        // Return the same status for missing orders and orders
-        // that cannot be authorized.
+        // DO NOT REVEAL WHETHER AN UNAUTHORIZED ORDER EXISTS
         if (!order || !order.paymentStatusTokenHash) {
             return res.status(401).json({
                 success: false,
-                message:
-                    "Order status authorization failed. Contact the hotel if this is an existing order."
-            });
-        }
-
-        // --------------------------------------
-        // HASH SUPPLIED TOKEN
-        // --------------------------------------
-
-        const suppliedHash = crypto
-            .createHash("sha256")
-            .update(suppliedToken)
-            .digest();
-
-        let storedHash;
-
-        try {
-            storedHash = Buffer.from(
-                order.paymentStatusTokenHash,
-                "hex"
-            );
-        } catch {
-            return res.status(401).json({
-                success: false,
                 message: "Order status authorization failed."
             });
         }
 
-        // --------------------------------------
-        // CONSTANT-TIME TOKEN COMPARISON
-        // --------------------------------------
+        // HASH THE SUPPLIED TOKEN
+        const suppliedHash = crypto
+            .createHash("sha256")
+            .update(token)
+            .digest("hex");
 
+        const expectedBuffer = Buffer.from(
+            order.paymentStatusTokenHash,
+            "hex"
+        );
+
+        const suppliedBuffer = Buffer.from(suppliedHash, "hex");
+
+        // CONSTANT-TIME TOKEN COMPARISON
         if (
-            storedHash.length !== suppliedHash.length ||
-            !crypto.timingSafeEqual(storedHash, suppliedHash)
+            expectedBuffer.length !== suppliedBuffer.length ||
+            !crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)
         ) {
             return res.status(401).json({
                 success: false,
@@ -496,14 +436,12 @@ export const getPaymentStatus = async (req, res) => {
             });
         }
 
-        // --------------------------------------
-        // RETURN AUTHORIZED PAYMENT STATUS
-        // --------------------------------------
-
+        // RETURN ONLY THE AUTHORIZED STATUS INFORMATION
         return res.status(200).json({
             success: true,
             paymentStatus: order.paymentStatus,
             failureReason: order.failureReason,
+            reconciliationRequired: order.reconciliationRequired === true,
             orderStatus: order.orderStatus
         });
 
@@ -520,7 +458,6 @@ export const getPaymentStatus = async (req, res) => {
 
 // ======================================
 // UPDATE ORDER
-// Only allow a controlled order-status update
 // ======================================
 
 export const updateOrder = async (req, res) => {
@@ -584,11 +521,10 @@ export const updateOrder = async (req, res) => {
     }
 };
 
-
 // ======================================
 // UPDATE ORDER STATUS
-// Used by kitchen
-// M-Pesa controls payment status
+// USED BY KITCHEN
+// M-PESA CONTROLS PAYMENT STATUS
 // ======================================
 
 export const updateOrderStatus = async (req, res) => {
@@ -603,6 +539,7 @@ export const updateOrderStatus = async (req, res) => {
             });
         }
 
+        // Kitchen staff must never change payment status.
         if (paymentStatus !== undefined) {
             return res.status(400).json({
                 success: false,
@@ -629,8 +566,33 @@ export const updateOrderStatus = async (req, res) => {
             });
         }
 
-        const order = await Order.findByIdAndUpdate(
-            id,
+        // Find the order before allowing a kitchen update.
+        const existingOrder = await Order.findById(id)
+            .select("paymentStatus orderStatus");
+
+        if (!existingOrder) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found."
+            });
+        }
+
+        // Unpaid or failed orders must not be processed by the kitchen.
+        if (existingOrder.paymentStatus !== "Paid") {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "Only paid orders can be processed by the kitchen."
+            });
+        }
+
+        // Repeat the payment condition in the update to prevent
+        // updating an order that changed state after the initial read.
+        const order = await Order.findOneAndUpdate(
+            {
+                _id: id,
+                paymentStatus: "Paid"
+            },
             {
                 $set: { orderStatus }
             },
@@ -641,9 +603,10 @@ export const updateOrderStatus = async (req, res) => {
         );
 
         if (!order) {
-            return res.status(404).json({
+            return res.status(409).json({
                 success: false,
-                message: "Order not found."
+                message:
+                    "The order payment status changed. Refresh the order and try again."
             });
         }
 
@@ -666,8 +629,7 @@ export const updateOrderStatus = async (req, res) => {
 
 // ======================================
 // DELETE ORDER
-// Do not delete an order with an active
-// stock reservation or unresolved payment
+// PROTECT PENDING AND PAID ORDERS
 // ======================================
 
 export const deleteOrder = async (req, res) => {
@@ -690,7 +652,19 @@ export const deleteOrder = async (req, res) => {
             });
         }
 
-        // Never delete an order whose payment outcome is unresolved.
+        // NEVER DELETE AN ORDER THAT NEEDS PAYMENT INVESTIGATION
+        if (
+            order.reconciliationRequired === true ||
+            order.amountPaid !== undefined && order.amountPaid !== null
+        ) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "This order requires payment reconciliation and cannot be deleted."
+            });
+        }
+
+        // NEVER DELETE AN ORDER WITH UNRESOLVED PAYMENT
         if (order.paymentStatus === "Pending") {
             return res.status(409).json({
                 success: false,
@@ -699,7 +673,7 @@ export const deleteOrder = async (req, res) => {
             });
         }
 
-        // Never delete a successful payment record.
+        // NEVER DELETE A SUCCESSFUL PAYMENT RECORD
         if (
             order.paymentStatus === "Paid" ||
             order.mpesaReceiptNumber
@@ -711,7 +685,7 @@ export const deleteOrder = async (req, res) => {
             });
         }
 
-        // Never delete an order while its stock is reserved.
+        // NEVER DELETE AN ORDER WITH RESERVED STOCK
         if (order.stockReserved === true) {
             return res.status(409).json({
                 success: false,
@@ -720,7 +694,7 @@ export const deleteOrder = async (req, res) => {
             });
         }
 
-        // Only confirmed failed orders can be deleted.
+        // ONLY CONFIRMED FAILED ORDERS CAN BE DELETED
         if (order.paymentStatus !== "Failed") {
             return res.status(409).json({
                 success: false,
