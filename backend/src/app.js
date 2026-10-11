@@ -1,4 +1,5 @@
 
+import { mpesaCallback } from "./controllers/mpesa.controller.js";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -11,6 +12,7 @@ import foodRoutes from "./routes/food.route.js";
 import orderRoutes from "./routes/order.route.js";
 import cartRoutes from "./routes/cart.route.js";
 import mpesaRoutes from "./routes/mpesa.route.js";
+
 
 const app = express();
 
@@ -250,12 +252,15 @@ app.use(
 // ======================================
 // API ROUTES
 // ======================================
-
+// Callback URL without the word "mpesa"
+app.post("/api/payments/callback", mpesaCallback);
 app.use("/api/mpesa", mpesaRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/food", foodRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/cart", cartRoutes);
+
+
 
 // ======================================
 // 404 API HANDLER
