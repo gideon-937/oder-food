@@ -73,9 +73,10 @@ app.use(
         ],
 
         allowedHeaders: [
-            "Content-Type",
-            "Authorization"
-        ]
+    "Content-Type",
+    "Authorization",
+    "X-Order-Status-Token"
+]
     })
 );
 

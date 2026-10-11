@@ -6,16 +6,7 @@ const API_URL = "https://oder-food-2.onrender.com";
 
 console.log("MAIN SCRIPT.JS IS WORKING");
 
-// ======================================
-// REMOVE DUPLICATE CHECKOUT BUTTONS
-// ======================================
 
-document.querySelectorAll("#checkout-btn").forEach((button, index) => {
-    if (index > 0) {
-        button.remove();
-        console.warn("Removed duplicate #checkout-btn element.");
-    }
-});
 
 // ======================================
 // HTML ELEMENTS
@@ -42,10 +33,13 @@ const customerNameInput = document.getElementById("customer-name");
 
 const CART_STORAGE_KEY = "shoppingCart";
 const PENDING_ORDER_KEY = "pendingFoodOrderId";
+const PENDING_ORDER_TOKEN_KEY = "pendingFoodOrderStatusToken";
 const PENDING_ORDER_HISTORY_KEY = "pendingFoodOrderHistory";
 
 let shoppingCart = [];
 let currentOrderId = localStorage.getItem(PENDING_ORDER_KEY) || null;
+let currentOrderStatusToken =
+    localStorage.getItem(PENDING_ORDER_TOKEN_KEY) || null;
 
 // Remember whether the customer has entered the checkout stage.
 let checkoutStageActive = Boolean(currentOrderId);
@@ -111,13 +105,32 @@ function saveCart() {
     );
 }
 
-function savePendingOrder(orderId) {
+function savePendingOrder(orderId, statusToken) {
+    const previousOrderId = currentOrderId;
     currentOrderId = orderId ? String(orderId) : null;
 
-    if (currentOrderId) {
-        localStorage.setItem(PENDING_ORDER_KEY, currentOrderId);
-    } else {
+    if (!currentOrderId) {
+        currentOrderStatusToken = null;
         localStorage.removeItem(PENDING_ORDER_KEY);
+        localStorage.removeItem(PENDING_ORDER_TOKEN_KEY);
+        return;
+    }
+
+    localStorage.setItem(PENDING_ORDER_KEY, currentOrderId);
+
+    if (
+        typeof statusToken === "string" &&
+        /^[a-f0-9]{64}$/i.test(statusToken)
+    ) {
+        currentOrderStatusToken = statusToken;
+
+        localStorage.setItem(
+            PENDING_ORDER_TOKEN_KEY,
+            statusToken
+        );
+    } else if (previousOrderId !== currentOrderId) {
+        currentOrderStatusToken = null;
+        localStorage.removeItem(PENDING_ORDER_TOKEN_KEY);
     }
 }
 
@@ -228,6 +241,26 @@ function getPaymentStatus(data) {
         data?.order?.status ??
         ""
     ).trim().toLowerCase();
+}
+async function fetchPaymentStatus(orderId) {
+    const token = currentOrderStatusToken;
+
+    if (!token) {
+        throw new Error(
+            "The secure status token for this order is missing. " +
+            "Do not pay again. The order needs to be verified."
+        );
+    }
+
+    return fetchJSON(
+        `${API_URL}/api/orders/payment-status/` +
+        encodeURIComponent(orderId),
+        {
+            headers: {
+                "X-Order-Status-Token": token
+            }
+        }
+    );
 }
 
 // ======================================
@@ -933,14 +966,10 @@ function validateCartAgainstStock() {
     return true;
 }
 
-// ======================================
-// CHECKOUT
-// ======================================
 
-// UPDATED:
-// An unresolved previous order is archived locally.
-// A new checkout can proceed without deleting or modifying
-// the previous order in the database.
+/* ======================================
+   CHECKOUT
+====================================== */
 
 if (checkoutBtn) {
     checkoutBtn.addEventListener("click", async () => {
@@ -948,50 +977,29 @@ if (checkoutBtn) {
             showPaymentMessage(
                 "Please wait for the current request to finish."
             );
+            return;
+        }
 
+        // Do not abandon an order whose payment is unresolved.
+        if (currentOrderId) {
+            if (paymentBox) {
+                paymentBox.style.display = "block";
+            }
+
+            await checkCurrentPaymentStatus();
             return;
         }
 
         if (shoppingCart.length === 0) {
-            alert(
-                "Your shopping basket is empty. Add food before checkout."
-            );
-
+            alert("Your shopping basket is empty. Add food before checkout.");
             return;
         }
 
         checkoutBtn.disabled = true;
 
         try {
-            // Refresh the latest stock before checkout.
             await refreshStock();
-
             validateCartAgainstStock();
-
-            // Archive the previous unresolved order if there is one.
-            if (currentOrderId) {
-                const previousOrderId = String(currentOrderId);
-
-                archivePendingOrder(previousOrderId);
-
-                // Stop monitoring this order in this browser tab.
-                stopPaymentPolling();
-
-                // Clear only the active browser reference.
-                // The order itself remains in the database.
-               // Clear only the active browser reference.
-// Keep the previous order saved in the database.
-savePendingOrder(null);
-
-// Allow the customer to start a new checkout.
-checkoutStageActive = false;
-paymentRequestInProgress = false;
-statusCheckInProgress = false;
-                console.warn(
-                    "Previous order remains unresolved:",
-                    previousOrderId
-                );
-            }
 
             if (paymentBox) {
                 paymentBox.style.display = "block";
@@ -1011,18 +1019,16 @@ statusCheckInProgress = false;
             }
 
             showPaymentMessage(
-                "Your basket is ready. Enter your details to place a new order."
+                "Your basket is ready. Enter your details to place your order."
             );
 
-            if (customerNameInput) {
-                customerNameInput.focus();
-            }
+            customerNameInput?.focus();
         } catch (error) {
             console.error("Checkout stock check error:", error);
 
             alert(
                 error.message ||
-                "Could not verify food stock."
+                "Could not verify food stock. Please try again."
             );
         } finally {
             displayCart();
@@ -1030,9 +1036,10 @@ statusCheckInProgress = false;
     });
 }
 
-// ======================================
-// HANDLE CONFIRMED PAYMENT SUCCESS
-// ======================================
+
+/* ======================================
+   HANDLE CONFIRMED PAYMENT SUCCESS
+====================================== */
 
 async function handlePaymentSuccess() {
     stopPaymentPolling();
@@ -1041,6 +1048,7 @@ async function handlePaymentSuccess() {
     saveCart();
     savePendingOrder(null);
 
+    checkoutStageActive = false;
     paymentRequestInProgress = false;
     statusCheckInProgress = false;
 
@@ -1074,32 +1082,30 @@ async function handlePaymentSuccess() {
     try {
         await refreshStock();
     } catch (error) {
-        console.error(
-            "Could not refresh stock after payment:",
-            error
-        );
+        console.error("Could not refresh stock after payment:", error);
     }
 
     alert("Payment successful! Your order has been received.");
 }
 
-// ======================================
-// HANDLE CONFIRMED PAYMENT FAILURE
-// ======================================
+
+
+/* ======================================
+   HANDLE CONFIRMED PAYMENT FAILURE
+====================================== */
 
 async function handlePaymentFailure(reason) {
     stopPaymentPolling();
 
-    // Clear the active browser order only after the backend
-    // confirms the payment has failed or been cancelled.
     savePendingOrder(null);
 
+    checkoutStageActive = false;
     paymentRequestInProgress = false;
     statusCheckInProgress = false;
 
     showPaymentMessage(
         (reason || "Payment failed.") +
-        " You can try checkout again after stock has refreshed."
+        " Check your updated stock before trying checkout again."
     );
 
     if (payBtn) {
@@ -1110,25 +1116,23 @@ async function handlePaymentFailure(reason) {
     try {
         await refreshStock();
     } catch (error) {
-        console.error(
-            "Stock refresh after failure failed:",
-            error
-        );
+        console.error("Stock refresh after failure failed:", error);
     }
 
     displayCart();
 }
 
+
 // ======================================
 // CHECK CURRENT PAYMENT STATUS
 // ======================================
 
+
 async function checkCurrentPaymentStatus() {
     if (!currentOrderId) {
         showPaymentMessage(
-            "No pending order was found. You can continue checkout."
+            "No active order was found. You can continue checkout."
         );
-
         return;
     }
 
@@ -1143,21 +1147,19 @@ async function checkCurrentPaymentStatus() {
         payBtn.textContent = "Checking...";
     }
 
-    showPaymentMessage(
-        "Checking your M-Pesa payment status..."
-    );
+    showPaymentMessage("Checking your M-Pesa payment status...");
 
     try {
-        const data = await fetchJSON(
-            `${API_URL}/api/orders/payment-status/` +
-            encodeURIComponent(orderIdBeingChecked)
-        );
-
+        const data = await fetchPaymentStatus(id);
         if (String(currentOrderId) !== orderIdBeingChecked) {
             return;
         }
 
         const status = getPaymentStatus(data);
+
+        const failureReason =
+            data.failureReason ||
+            data.order?.failureReason;
 
         if (status === "paid") {
             await handlePaymentSuccess();
@@ -1166,40 +1168,57 @@ async function checkCurrentPaymentStatus() {
 
         if (status === "failed" || status === "cancelled") {
             await handlePaymentFailure(
-                data.failureReason ||
-                data.order?.failureReason ||
-                "Payment failed or was cancelled."
+                failureReason || "Payment failure confirmed by the server."
             );
+            return;
+        }
+
+        // A pending order with a failure reason needs investigation.
+        // Do not mark it failed or release reserved stock here.
+        if (status === "pending" && failureReason) {
+            stopPaymentPolling();
+
+            showPaymentMessage(
+                "Payment requires manual verification: " +
+                failureReason +
+                ". Do not pay again until the order is checked."
+            );
+
+            if (payBtn) {
+                payBtn.disabled = false;
+                payBtn.textContent = "Check Payment Status";
+            }
 
             return;
         }
 
-        if (
-            status !== "pending" &&
-            status !== "processing" &&
-            status !== ""
-        ) {
-            console.warn(
-                "Unrecognized payment status:",
-                data
+        if (status === "pending" || status === "processing" || !status) {
+            showPaymentMessage(
+                "Payment is not confirmed yet. Checking the existing order. " +
+                "Do not make another payment while its outcome is unknown."
             );
+
+            startPaymentPolling(orderIdBeingChecked);
+            return;
         }
 
         showPaymentMessage(
-            "Payment is not confirmed yet. We will check the existing order. " +
-            "Do not make another payment while its outcome is unknown."
+            "The server returned an unrecognized payment status. " +
+            "Do not pay again until the order has been checked."
         );
 
-        startPaymentPolling(orderIdBeingChecked);
+        console.error("Unrecognized payment status:", data);
+
+        if (payBtn) {
+            payBtn.disabled = false;
+            payBtn.textContent = "Check Payment Status";
+        }
     } catch (error) {
-        console.error(
-            "Payment status check failed:",
-            error
-        );
+        console.error("Payment status check failed:", error);
 
         showPaymentMessage(
-            "We could not retrieve your payment status. Check your connection " +
-            "and try Check Payment Status again. Do not assume payment failed."
+            "We could not retrieve your payment status. " +
+            "The payment outcome is unknown. Do not pay again yet."
         );
 
         if (payBtn) {
@@ -1210,6 +1229,7 @@ async function checkCurrentPaymentStatus() {
         statusCheckInProgress = false;
     }
 }
+
 
 // ======================================
 // M-PESA PAYMENT BUTTON
@@ -1306,16 +1326,32 @@ if (payBtn) {
             const order = orderData.order || orderData;
 
             if (!order._id) {
-                throw new Error(
-                    "The server did not return an order ID. " +
-                    "Verify the order before trying again."
-                );
-            }
+    throw new Error(
+        "The server did not return an order ID. " +
+        "Verify the order before trying again."
+    );
+}
 
-            // Save the order ID immediately. If the payment request
-            // times out, we can check this order instead of creating
-            // another payment request for the same order.
-            savePendingOrder(order._id);
+// Save the order ID and secure status token.
+if (
+    typeof orderData.statusToken !== "string" ||
+    !/^[a-f0-9]{64}$/i.test(orderData.statusToken)
+) {
+    savePendingOrder(order._id);
+
+    checkoutStageActive = true;
+    displayCart();
+
+    throw new Error(
+        "The order was created, but its secure status token " +
+        "was not returned. Do not create another order or payment. " +
+        "The existing order must be verified."
+    );
+}
+
+savePendingOrder(order._id, orderData.statusToken);
+checkoutStageActive = true;
+displayCart();
 
             showPaymentMessage(
                 "Order created. Preparing your M-Pesa request..."
@@ -1412,6 +1448,23 @@ if (payBtn) {
 function startPaymentPolling(orderId) {
     if (!orderId) return;
 
+    if (!currentOrderStatusToken) {
+        stopPaymentPolling();
+
+        showPaymentMessage(
+            "The secure token for this existing order is missing. " +
+            "Do not pay again. Contact the site administrator to " +
+            "verify the existing order."
+        );
+
+        if (payBtn) {
+            payBtn.disabled = false;
+            payBtn.textContent = "Check Payment Status";
+        }
+
+        return;
+    }
+
     const id = String(orderId);
 
     if (
@@ -1452,24 +1505,42 @@ function startPaymentPolling(orderId) {
         attempts++;
 
         try {
-            const data = await fetchJSON(
-                `${API_URL}/api/orders/payment-status/` +
-                encodeURIComponent(id)
-            );
+            const data = await fetchPaymentStatus(orderIdBeingChecked);
 
             if (String(currentOrderId) !== id) {
                 return;
             }
 
-            const status = getPaymentStatus(data);
+         
+const status = getPaymentStatus(data);
+const failureReason =
+    data.failureReason || data.order?.failureReason;
 
-            if (status === "paid") {
-                stopPaymentPolling();
+// Payment confirmed
+if (status === "paid") {
+    stopPaymentPolling();
+    await handlePaymentSuccess();
+    return;
+}
 
-                await handlePaymentSuccess();
+// Payment outcome needs manual verification
+if (status === "pending" && failureReason) {
+    stopPaymentPolling();
 
-                return;
-            }
+    showPaymentMessage(
+        "Payment requires manual verification: " +
+        failureReason +
+        ". Do not pay again until the order is checked."
+    );
+
+    if (payBtn) {
+        payBtn.disabled = false;
+        payBtn.textContent = "Check Payment Status";
+    }
+
+    return;
+}
+
 
             if (
                 status === "failed" ||
