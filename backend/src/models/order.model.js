@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const orderSchema = new mongoose.Schema({
@@ -67,12 +66,6 @@ const orderSchema = new mongoose.Schema({
     paymentInitiationClaimed: {
         type: Boolean,
         default: false
-    },
-
-    // Store only the hash of the customer's private status token.
-    paymentStatusTokenHash: {
-        type: String,
-        select: false
     },
 
     mpesaReceiptNumber: {
