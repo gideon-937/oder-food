@@ -1,5 +1,4 @@
 ﻿
-import crypto from "node:crypto";
 import mongoose from "mongoose";
 import Order from "../models/order.model.js";
 import Food from "../models/food.model.js";
@@ -9,16 +8,8 @@ import Food from "../models/food.model.js";
 // ======================================
 
 export const createOrder = async (req, res) => {
-    const statusToken = crypto.randomBytes(32).toString("hex");
-
-    const statusTokenHash = crypto
-        .createHash("sha256")
-        .update(statusToken)
-        .digest("hex");
-
     const { customer, items } = req.body;
 
-    // VALIDATE CUSTOMER
     if (
         !customer ||
         typeof customer.name !== "string" ||
@@ -47,7 +38,6 @@ export const createOrder = async (req, res) => {
         });
     }
 
-    // VALIDATE CART
     if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({
             success: false,
@@ -62,7 +52,6 @@ export const createOrder = async (req, res) => {
         });
     }
 
-    // VALIDATE ITEMS AND COMBINE DUPLICATES
     const cartMap = new Map();
 
     for (const item of items) {
@@ -90,8 +79,7 @@ export const createOrder = async (req, res) => {
             });
         }
 
-        const foodId = item.foodId;
-        const existingQuantity = cartMap.get(foodId) || 0;
+        const existingQuantity = cartMap.get(item.foodId) || 0;
         const combinedQuantity = existingQuantity + quantity;
 
         if (combinedQuantity > 100) {
@@ -102,14 +90,13 @@ export const createOrder = async (req, res) => {
             });
         }
 
-        cartMap.set(foodId, combinedQuantity);
+        cartMap.set(item.foodId, combinedQuantity);
     }
 
     const session = await mongoose.startSession();
     let createdOrder;
 
     try {
-        // ATOMIC STOCK RESERVATION + ORDER CREATION
         await session.withTransaction(async () => {
             const foodIds = [...cartMap.keys()];
 
@@ -120,16 +107,12 @@ export const createOrder = async (req, res) => {
                 .lean();
 
             const foodMap = new Map(
-                foods.map(food => [
-                    food._id.toString(),
-                    food
-                ])
+                foods.map(food => [food._id.toString(), food])
             );
 
             const secureItems = [];
             let totalPrice = 0;
 
-            // CHECK FOOD AND CALCULATE OFFICIAL PRICE
             for (const [foodId, quantity] of cartMap.entries()) {
                 const food = foodMap.get(foodId);
 
@@ -155,12 +138,6 @@ export const createOrder = async (req, res) => {
                     !Number.isFinite(officialPrice) ||
                     officialPrice < 0
                 ) {
-                    console.error(
-                        "INVALID FOOD PRICE:",
-                        food._id,
-                        food.price
-                    );
-
                     const error = new Error(
                         "Invalid food price configuration."
                     );
@@ -202,7 +179,6 @@ export const createOrder = async (req, res) => {
 
             totalPrice = Number(totalPrice.toFixed(2));
 
-            // DEDUCT STOCK SAFELY
             for (const [foodId, quantity] of cartMap.entries()) {
                 const updatedFood = await Food.findOneAndUpdate(
                     {
@@ -211,9 +187,7 @@ export const createOrder = async (req, res) => {
                         stock: { $gte: quantity }
                     },
                     {
-                        $inc: {
-                            stock: -quantity
-                        }
+                        $inc: { stock: -quantity }
                     },
                     {
                         returnDocument: "after",
@@ -224,9 +198,9 @@ export const createOrder = async (req, res) => {
 
                 if (!updatedFood) {
                     const error = new Error(
-                        "Stock changed while processing your order. Please refresh the menu and try again."
+                        "Stock changed while processing your order. " +
+                        "Please refresh the menu and try again."
                     );
-
                     error.statusCode = 409;
                     error.code = "INSUFFICIENT_STOCK";
                     throw error;
@@ -240,7 +214,6 @@ export const createOrder = async (req, res) => {
                 });
             }
 
-            // CREATE ORDER WITH ACTIVE RESERVATION
             const orders = await Order.create(
                 [
                     {
@@ -252,8 +225,7 @@ export const createOrder = async (req, res) => {
                         totalPrice,
                         paymentStatus: "Pending",
                         orderStatus: "Pending",
-                        stockReserved: true,
-                        paymentStatusTokenHash: statusTokenHash
+                        stockReserved: true
                     }
                 ],
                 { session }
@@ -262,9 +234,7 @@ export const createOrder = async (req, res) => {
             createdOrder = orders[0];
         });
 
-        // LOG SUCCESSFUL ORDER CREATION
         console.log("===== ORDER CREATED; STOCK RESERVED =====");
-
         console.log({
             orderId: createdOrder._id.toString(),
             totalPrice: createdOrder.totalPrice,
@@ -272,18 +242,11 @@ export const createOrder = async (req, res) => {
             stockReserved: createdOrder.stockReserved
         });
 
-        // NEVER EXPOSE THE STORED TOKEN HASH
-        const safeOrder = createdOrder.toObject();
-        delete safeOrder.paymentStatusTokenHash;
-
-        // RETURN THE PLAINTEXT TOKEN ONCE
         return res.status(201).json({
             success: true,
             message: "Order created and food stock reserved successfully.",
-            order: safeOrder,
-            statusToken
+            order: createdOrder.toObject()
         });
-
     } catch (error) {
         console.error("CREATE ORDER ERROR:", error);
 
@@ -298,12 +261,10 @@ export const createOrder = async (req, res) => {
             success: false,
             message: "Failed to create order. Please try again."
         });
-
     } finally {
         await session.endSession();
     }
 };
-
 
 // ======================================
 // GET ALL ORDERS
@@ -311,15 +272,13 @@ export const createOrder = async (req, res) => {
 
 export const getOrders = async (req, res) => {
     try {
-        const orders = await Order.find()
-            .sort({ createdAt: -1 });
+        const orders = await Order.find().sort({ createdAt: -1 });
 
         return res.status(200).json({
             success: true,
             count: orders.length,
             orders
         });
-
     } catch (error) {
         console.error("GET ORDERS ERROR:", error);
 
@@ -330,10 +289,8 @@ export const getOrders = async (req, res) => {
     }
 };
 
-
 // ======================================
-// GET SINGLE ORDER BY ID
-// USED BY KITCHEN
+// GET SINGLE ORDER BY ID — KITCHEN
 // ======================================
 
 export const getOrderById = async (req, res) => {
@@ -360,7 +317,6 @@ export const getOrderById = async (req, res) => {
             success: true,
             order
         });
-
     } catch (error) {
         console.error("GET ORDER ERROR:", error);
 
@@ -371,16 +327,14 @@ export const getOrderById = async (req, res) => {
     }
 };
 
-
 // ======================================
-// GET PAYMENT STATUS
-// REQUIRES THE CUSTOMER'S PRIVATE TOKEN
+// GET PAYMENT STATUS — NO TOKEN REQUIRED
+// Returns only limited status information.
 // ======================================
 
 export const getPaymentStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const token = req.get("X-Order-Status-Token");
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({
@@ -389,62 +343,24 @@ export const getPaymentStatus = async (req, res) => {
             });
         }
 
-        if (
-            typeof token !== "string" ||
-            !/^[a-f0-9]{64}$/i.test(token)
-        ) {
-            return res.status(401).json({
-                success: false,
-                message: "Valid payment-status token required."
-            });
-        }
-
-        // EXPLICITLY SELECT THE HASH BECAUSE THE SCHEMA USES select: false
         const order = await Order.findById(id).select(
-            "+paymentStatusTokenHash paymentStatus failureReason reconciliationRequired orderStatus"
+            "paymentStatus failureReason reconciliationRequired orderStatus"
         );
 
-        // DO NOT REVEAL WHETHER AN UNAUTHORIZED ORDER EXISTS
-        if (!order || !order.paymentStatusTokenHash) {
-            return res.status(401).json({
+        if (!order) {
+            return res.status(404).json({
                 success: false,
-                message: "Order status authorization failed."
+                message: "Order not found."
             });
         }
 
-        // HASH THE SUPPLIED TOKEN
-        const suppliedHash = crypto
-            .createHash("sha256")
-            .update(token)
-            .digest("hex");
-
-        const expectedBuffer = Buffer.from(
-            order.paymentStatusTokenHash,
-            "hex"
-        );
-
-        const suppliedBuffer = Buffer.from(suppliedHash, "hex");
-
-        // CONSTANT-TIME TOKEN COMPARISON
-        if (
-            expectedBuffer.length !== suppliedBuffer.length ||
-            !crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)
-        ) {
-            return res.status(401).json({
-                success: false,
-                message: "Order status authorization failed."
-            });
-        }
-
-        // RETURN ONLY THE AUTHORIZED STATUS INFORMATION
         return res.status(200).json({
             success: true,
             paymentStatus: order.paymentStatus,
             failureReason: order.failureReason,
-            reconciliationRequired: order.reconciliationRequired === true,
+            reconciliationRequired: order.reconciliationRequired,
             orderStatus: order.orderStatus
         });
-
     } catch (error) {
         console.error("GET PAYMENT STATUS ERROR:", error);
 
@@ -454,7 +370,6 @@ export const getPaymentStatus = async (req, res) => {
         });
     }
 };
-
 
 // ======================================
 // UPDATE ORDER
@@ -489,9 +404,7 @@ export const updateOrder = async (req, res) => {
 
         const order = await Order.findByIdAndUpdate(
             id,
-            {
-                $set: { orderStatus }
-            },
+            { $set: { orderStatus } },
             {
                 returnDocument: "after",
                 runValidators: true
@@ -510,7 +423,6 @@ export const updateOrder = async (req, res) => {
             message: "Order status updated successfully.",
             order
         });
-
     } catch (error) {
         console.error("UPDATE ORDER ERROR:", error);
 
@@ -522,8 +434,7 @@ export const updateOrder = async (req, res) => {
 };
 
 // ======================================
-// UPDATE ORDER STATUS
-// USED BY KITCHEN
+// UPDATE ORDER STATUS — KITCHEN
 // M-PESA CONTROLS PAYMENT STATUS
 // ======================================
 
@@ -539,7 +450,6 @@ export const updateOrderStatus = async (req, res) => {
             });
         }
 
-        // Kitchen staff must never change payment status.
         if (paymentStatus !== undefined) {
             return res.status(400).json({
                 success: false,
@@ -566,7 +476,6 @@ export const updateOrderStatus = async (req, res) => {
             });
         }
 
-        // Find the order before allowing a kitchen update.
         const existingOrder = await Order.findById(id)
             .select("paymentStatus orderStatus");
 
@@ -577,7 +486,6 @@ export const updateOrderStatus = async (req, res) => {
             });
         }
 
-        // Unpaid or failed orders must not be processed by the kitchen.
         if (existingOrder.paymentStatus !== "Paid") {
             return res.status(409).json({
                 success: false,
@@ -586,16 +494,12 @@ export const updateOrderStatus = async (req, res) => {
             });
         }
 
-        // Repeat the payment condition in the update to prevent
-        // updating an order that changed state after the initial read.
         const order = await Order.findOneAndUpdate(
             {
                 _id: id,
                 paymentStatus: "Paid"
             },
-            {
-                $set: { orderStatus }
-            },
+            { $set: { orderStatus } },
             {
                 returnDocument: "after",
                 runValidators: true
@@ -606,7 +510,8 @@ export const updateOrderStatus = async (req, res) => {
             return res.status(409).json({
                 success: false,
                 message:
-                    "The order payment status changed. Refresh the order and try again."
+                    "The order payment status changed. " +
+                    "Refresh the order and try again."
             });
         }
 
@@ -615,7 +520,6 @@ export const updateOrderStatus = async (req, res) => {
             message: "Order status updated successfully.",
             order
         });
-
     } catch (error) {
         console.error("UPDATE ORDER STATUS ERROR:", error);
 
@@ -626,10 +530,8 @@ export const updateOrderStatus = async (req, res) => {
     }
 };
 
-
 // ======================================
-// DELETE ORDER
-// PROTECT PENDING AND PAID ORDERS
+// DELETE ORDER — PROTECT PENDING AND PAID
 // ======================================
 
 export const deleteOrder = async (req, res) => {
@@ -652,10 +554,10 @@ export const deleteOrder = async (req, res) => {
             });
         }
 
-        // NEVER DELETE AN ORDER THAT NEEDS PAYMENT INVESTIGATION
         if (
             order.reconciliationRequired === true ||
-            order.amountPaid !== undefined && order.amountPaid !== null
+            (order.amountPaid !== undefined &&
+                order.amountPaid !== null)
         ) {
             return res.status(409).json({
                 success: false,
@@ -664,16 +566,15 @@ export const deleteOrder = async (req, res) => {
             });
         }
 
-        // NEVER DELETE AN ORDER WITH UNRESOLVED PAYMENT
         if (order.paymentStatus === "Pending") {
             return res.status(409).json({
                 success: false,
                 message:
-                    "This order has a pending payment. Verify its outcome before deleting it."
+                    "This order has a pending payment. " +
+                    "Verify its outcome before deleting it."
             });
         }
 
-        // NEVER DELETE A SUCCESSFUL PAYMENT RECORD
         if (
             order.paymentStatus === "Paid" ||
             order.mpesaReceiptNumber
@@ -685,21 +586,19 @@ export const deleteOrder = async (req, res) => {
             });
         }
 
-        // NEVER DELETE AN ORDER WITH RESERVED STOCK
         if (order.stockReserved === true) {
             return res.status(409).json({
                 success: false,
                 message:
-                    "This order still has reserved food stock. Resolve the reservation before deleting it."
+                    "This order still has reserved food stock. " +
+                    "Resolve the reservation before deleting it."
             });
         }
 
-        // ONLY CONFIRMED FAILED ORDERS CAN BE DELETED
         if (order.paymentStatus !== "Failed") {
             return res.status(409).json({
                 success: false,
-                message:
-                    "Only confirmed failed orders can be deleted."
+                message: "Only confirmed failed orders can be deleted."
             });
         }
 
@@ -709,7 +608,6 @@ export const deleteOrder = async (req, res) => {
             success: true,
             message: "Order deleted successfully."
         });
-
     } catch (error) {
         console.error("DELETE ORDER ERROR:", error);
 

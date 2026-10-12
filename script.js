@@ -1,12 +1,11 @@
-// ======================================
-// API CONFIGURATION
-// ======================================
+
+ // ======================================
+ // API CONFIGURATION
+ // ======================================
 
 const API_URL = "https://oder-food-2.onrender.com";
 
 console.log("MAIN SCRIPT.JS IS WORKING");
-
-
 
 // ======================================
 // HTML ELEMENTS
@@ -31,17 +30,14 @@ const customerNameInput = document.getElementById("customer-name");
 // CART AND PAYMENT STATE
 // ======================================
 
+
 const CART_STORAGE_KEY = "shoppingCart";
 const PENDING_ORDER_KEY = "pendingFoodOrderId";
-const PENDING_ORDER_TOKEN_KEY = "pendingFoodOrderStatusToken";
 const PENDING_ORDER_HISTORY_KEY = "pendingFoodOrderHistory";
 
 let shoppingCart = [];
 let currentOrderId = localStorage.getItem(PENDING_ORDER_KEY) || null;
-let currentOrderStatusToken =
-    localStorage.getItem(PENDING_ORDER_TOKEN_KEY) || null;
 
-// Remember whether the customer has entered the checkout stage.
 let checkoutStageActive = Boolean(currentOrderId);
 let paymentPollingInterval = null;
 let paymentRequestInProgress = false;
@@ -105,42 +101,20 @@ function saveCart() {
     );
 }
 
-function savePendingOrder(orderId, statusToken) {
-    const previousOrderId = currentOrderId;
+function savePendingOrder(orderId) {
     currentOrderId = orderId ? String(orderId) : null;
 
     if (!currentOrderId) {
-        currentOrderStatusToken = null;
         localStorage.removeItem(PENDING_ORDER_KEY);
-        localStorage.removeItem(PENDING_ORDER_TOKEN_KEY);
         return;
     }
 
     localStorage.setItem(PENDING_ORDER_KEY, currentOrderId);
-
-    if (
-        typeof statusToken === "string" &&
-        /^[a-f0-9]{64}$/i.test(statusToken)
-    ) {
-        currentOrderStatusToken = statusToken;
-
-        localStorage.setItem(
-            PENDING_ORDER_TOKEN_KEY,
-            statusToken
-        );
-    } else if (previousOrderId !== currentOrderId) {
-        currentOrderStatusToken = null;
-        localStorage.removeItem(PENDING_ORDER_TOKEN_KEY);
-    }
 }
 
 // ======================================
 // ARCHIVE AN UNRESOLVED ORDER ID
 // ======================================
-
-// This saves the old order ID in the browser.
-// It does NOT delete the order from MongoDB.
-// It does NOT mark the order as failed or paid.
 
 function archivePendingOrder(orderId) {
     if (!orderId) return;
@@ -154,21 +128,16 @@ function archivePendingOrder(orderId) {
         );
 
         if (Array.isArray(saved)) {
-            history = saved
-                .filter(value => typeof value === "string");
+            history = saved.filter(value => typeof value === "string");
         }
     } catch (error) {
-        console.error(
-            "Could not read pending order history:",
-            error
-        );
+        console.error("Could not read pending order history:", error);
     }
 
     if (!history.includes(id)) {
         history.push(id);
     }
 
-    // Keep a reasonable browser-side history.
     history = history.slice(-100);
 
     localStorage.setItem(
@@ -180,7 +149,6 @@ function archivePendingOrder(orderId) {
 // ======================================
 // API HELPERS
 // ======================================
-
 
 async function fetchJSON(url, options = {}) {
     const controller = new AbortController();
@@ -224,7 +192,6 @@ async function fetchJSON(url, options = {}) {
     }
 }
 
-
 function getFoodsFromResponse(data) {
     if (Array.isArray(data)) return data;
     if (Array.isArray(data.foods)) return data.foods;
@@ -242,24 +209,21 @@ function getPaymentStatus(data) {
         ""
     ).trim().toLowerCase();
 }
-async function fetchPaymentStatus(orderId) {
-    const token = currentOrderStatusToken;
 
-    if (!token) {
-        throw new Error(
-            "The secure status token for this order is missing. " +
-            "Do not pay again. The order needs to be verified."
-        );
+// ======================================
+// PAYMENT STATUS REQUEST
+// ======================================
+
+
+
+async function fetchPaymentStatus(orderId) {
+    if (!orderId) {
+        throw new Error("A valid order ID is required.");
     }
 
     return fetchJSON(
         `${API_URL}/api/orders/payment-status/` +
-        encodeURIComponent(orderId),
-        {
-            headers: {
-                "X-Order-Status-Token": token
-            }
-        }
+        encodeURIComponent(String(orderId))
     );
 }
 
@@ -346,9 +310,7 @@ function getFoodImageUrl(image) {
     image = image.replace(/\\/g, "/");
 
     if (image.includes("/uploads/")) {
-        image = image.substring(
-            image.indexOf("/uploads/")
-        );
+        image = image.substring(image.indexOf("/uploads/"));
     }
 
     if (!image.startsWith("/")) {
@@ -439,7 +401,6 @@ function displayFoods(foods) {
     if (!foods || foods.length === 0) {
         foodContainer.innerHTML =
             "<p>No food available at the moment.</p>";
-
         return;
     }
 
@@ -450,11 +411,7 @@ function displayFoods(foods) {
         const imageUrl = getFoodImageUrl(food.image);
         const stock = getStock(foodId);
         const available = food.available !== false;
-        const canOrder =
-            available &&
-            stock !== null &&
-            stock > 0;
-
+        const canOrder = available && stock !== null && stock > 0;
         const price = Number(food.price) || 0;
 
         const foodCard = document.createElement("div");
@@ -473,12 +430,8 @@ function displayFoods(foods) {
                     : `<div class="no-image">No Image</div>`
             }
 
-            <h1 class="price">
-                KSh ${price.toLocaleString()}
-            </h1>
-
+            <h1 class="price">KSh ${price.toLocaleString()}</h1>
             <p>${escapeHTML(food.name)}</p>
-
             <p>${escapeHTML(food.description || "")}</p>
 
             ${
@@ -602,21 +555,18 @@ function displayCart() {
 
     cartItems.innerHTML = "";
 
-   
-if (shoppingCart.length === 0) {
-    cartItems.innerHTML = "<p>Your basket is empty.</p>";
+    if (shoppingCart.length === 0) {
+        cartItems.innerHTML = "<p>Your basket is empty.</p>";
+        cartTotal.textContent = "0";
+        cartCount.textContent = "0";
 
-    cartTotal.textContent = "0";
-    cartCount.textContent = "0";
+        checkoutBtn.style.display = "block";
+        checkoutBtn.disabled = true;
+        checkoutBtn.style.opacity = "0.5";
+        checkoutBtn.style.cursor = "not-allowed";
 
-    checkoutBtn.style.display = "block";
-    checkoutBtn.disabled = true;
-    checkoutBtn.style.opacity = "0.5";
-    checkoutBtn.style.cursor = "not-allowed";
-
-    return;
-}
-
+        return;
+    }
 
     let total = 0;
     let count = 0;
@@ -627,20 +577,14 @@ if (shoppingCart.length === 0) {
         const itemTotal = price * quantity;
         const stock = getStock(item.foodId);
         const food = getFood(item.foodId);
-        const available = Boolean(
-            food && food.available !== false
-        );
-
+        const available = Boolean(food && food.available !== false);
         const imageUrl = getFoodImageUrl(item.image);
 
         total += itemTotal;
         count += quantity;
 
-        const quantityAtLimit =
-            stock !== null && quantity >= stock;
-
-        const exceedsStock =
-            stock === null || quantity > stock;
+        const quantityAtLimit = stock !== null && quantity >= stock;
+        const exceedsStock = stock === null || quantity > stock;
 
         const cartItem = document.createElement("div");
         cartItem.className = "cart-item";
@@ -659,7 +603,6 @@ if (shoppingCart.length === 0) {
 
             <div class="cart-item-details">
                 <h4>${escapeHTML(item.name)}</h4>
-
                 <p>KSh ${price.toLocaleString()}</p>
 
                 <p
@@ -695,9 +638,7 @@ if (shoppingCart.length === 0) {
                         data-index="${index}"
                         aria-label="Increase quantity"
                         ${
-                            quantityAtLimit ||
-                            !available ||
-                            stock === null
+                            quantityAtLimit || !available || stock === null
                                 ? "disabled"
                                 : ""
                         }
@@ -712,9 +653,7 @@ if (shoppingCart.length === 0) {
                         : ""
                 }
 
-                <p>
-                    Subtotal: KSh ${itemTotal.toLocaleString()}
-                </p>
+                <p>Subtotal: KSh ${itemTotal.toLocaleString()}</p>
 
                 <button
                     type="button"
@@ -730,8 +669,7 @@ if (shoppingCart.length === 0) {
     cartTotal.textContent = total.toLocaleString();
     cartCount.textContent = count;
 
-    
-checkoutBtn.style.display = checkoutStageActive ? "none" : "block";
+    checkoutBtn.style.display = checkoutStageActive ? "none" : "block";
 
     const cartCanBeOrdered = shoppingCart.every(item => {
         const food = getFood(item.foodId);
@@ -748,11 +686,10 @@ checkoutBtn.style.display = checkoutStageActive ? "none" : "block";
     });
 
     checkoutBtn.disabled = !cartCanBeOrdered;
-    checkoutBtn.style.opacity =
-        checkoutBtn.disabled ? "0.5" : "1";
-
-    checkoutBtn.style.cursor =
-        checkoutBtn.disabled ? "not-allowed" : "pointer";
+    checkoutBtn.style.opacity = checkoutBtn.disabled ? "0.5" : "1";
+    checkoutBtn.style.cursor = checkoutBtn.disabled
+        ? "not-allowed"
+        : "pointer";
 
     // INCREASE QUANTITY
     cartItems.querySelectorAll(".increase-btn").forEach(button => {
@@ -794,7 +731,6 @@ checkoutBtn.style.display = checkoutStageActive ? "none" : "block";
                 displayCart();
             } catch (error) {
                 console.error("Quantity update error:", error);
-
                 alert("Unable to refresh stock. Please try again.");
             } finally {
                 displayCart();
@@ -829,7 +765,6 @@ checkoutBtn.style.display = checkoutStageActive ? "none" : "block";
             if (!Number.isInteger(index)) return;
 
             shoppingCart.splice(index, 1);
-
             saveCart();
             displayCart();
         });
@@ -852,8 +787,7 @@ function showPaymentMessage(message) {
 
 function resetPaymentUI() {
     if (paymentBox) {
-        paymentBox.style.display =
-            currentOrderId ? "block" : "none";
+        paymentBox.style.display = currentOrderId ? "block" : "none";
     }
 
     if (paymentStatus) {
@@ -866,7 +800,6 @@ function resetPaymentUI() {
 
     if (payBtn) {
         payBtn.disabled = false;
-
         payBtn.textContent = currentOrderId
             ? "Check Payment Status"
             : "Pay Now";
@@ -935,9 +868,7 @@ function validateCartAgainstStock() {
         }
 
         if (food.available === false) {
-            throw new Error(
-                `${item.name} is currently unavailable.`
-            );
+            throw new Error(`${item.name} is currently unavailable.`);
         }
 
         if (stock === null) {
@@ -950,9 +881,7 @@ function validateCartAgainstStock() {
             !Number.isSafeInteger(Number(item.quantity)) ||
             Number(item.quantity) < 1
         ) {
-            throw new Error(
-                `Invalid quantity for ${item.name}.`
-            );
+            throw new Error(`Invalid quantity for ${item.name}.`);
         }
 
         if (Number(item.quantity) > stock) {
@@ -966,10 +895,9 @@ function validateCartAgainstStock() {
     return true;
 }
 
-
-/* ======================================
-   CHECKOUT
-====================================== */
+// ======================================
+// CHECKOUT
+// ======================================
 
 if (checkoutBtn) {
     checkoutBtn.addEventListener("click", async () => {
@@ -1036,10 +964,9 @@ if (checkoutBtn) {
     });
 }
 
-
-/* ======================================
-   HANDLE CONFIRMED PAYMENT SUCCESS
-====================================== */
+// ======================================
+// HANDLE CONFIRMED PAYMENT SUCCESS
+// ======================================
 
 async function handlePaymentSuccess() {
     stopPaymentPolling();
@@ -1088,11 +1015,9 @@ async function handlePaymentSuccess() {
     alert("Payment successful! Your order has been received.");
 }
 
-
-
-/* ======================================
-   HANDLE CONFIRMED PAYMENT FAILURE
-====================================== */
+// ======================================
+// HANDLE CONFIRMED PAYMENT FAILURE
+// ======================================
 
 async function handlePaymentFailure(reason) {
     stopPaymentPolling();
@@ -1122,11 +1047,9 @@ async function handlePaymentFailure(reason) {
     displayCart();
 }
 
-
 // ======================================
 // CHECK CURRENT PAYMENT STATUS
 // ======================================
-
 
 async function checkCurrentPaymentStatus() {
     if (!currentOrderId) {
@@ -1150,16 +1073,15 @@ async function checkCurrentPaymentStatus() {
     showPaymentMessage("Checking your M-Pesa payment status...");
 
     try {
-       const data = await fetchPaymentStatus(orderIdBeingChecked);     
+        const data = await fetchPaymentStatus(orderIdBeingChecked);
+
         if (String(currentOrderId) !== orderIdBeingChecked) {
             return;
         }
 
         const status = getPaymentStatus(data);
-
         const failureReason =
-            data.failureReason ||
-            data.order?.failureReason;
+            data.failureReason || data.order?.failureReason;
 
         if (status === "paid") {
             await handlePaymentSuccess();
@@ -1174,7 +1096,6 @@ async function checkCurrentPaymentStatus() {
         }
 
         // A pending order with a failure reason needs investigation.
-        // Do not mark it failed or release reserved stock here.
         if (status === "pending" && failureReason) {
             stopPaymentPolling();
 
@@ -1230,7 +1151,6 @@ async function checkCurrentPaymentStatus() {
     }
 }
 
-
 // ======================================
 // M-PESA PAYMENT BUTTON
 // ======================================
@@ -1244,26 +1164,16 @@ if (payBtn) {
             return;
         }
 
-        if (
-            paymentRequestInProgress ||
-            statusCheckInProgress
-        ) {
+        if (paymentRequestInProgress || statusCheckInProgress) {
             return;
         }
 
-        const customerName =
-            customerNameInput?.value.trim() || "";
-
-        const phone =
-            phoneInput?.value.trim() || "";
+        const customerName = customerNameInput?.value.trim() || "";
+        const phone = phoneInput?.value.trim() || "";
 
         if (!customerName) {
-            alert(
-                "Please enter your name before making payment."
-            );
-
+            alert("Please enter your name before making payment.");
             customerNameInput?.focus();
-
             return;
         }
 
@@ -1274,7 +1184,6 @@ if (payBtn) {
             );
 
             phoneInput?.focus();
-
             return;
         }
 
@@ -1294,7 +1203,6 @@ if (payBtn) {
 
         try {
             await refreshStock();
-
             validateCartAgainstStock();
 
             showPaymentMessage("Creating your order...");
@@ -1304,17 +1212,14 @@ if (payBtn) {
                 `${API_URL}/api/orders`,
                 {
                     method: "POST",
-
                     headers: {
                         "Content-Type": "application/json"
                     },
-
                     body: JSON.stringify({
                         customer: {
                             name: customerName,
                             phone: mpesaPhone
                         },
-
                         items: shoppingCart.map(item => ({
                             foodId: String(item.foodId),
                             quantity: Number(item.quantity)
@@ -1325,33 +1230,21 @@ if (payBtn) {
 
             const order = orderData.order || orderData;
 
-            if (!order._id) {
-    throw new Error(
-        "The server did not return an order ID. " +
-        "Verify the order before trying again."
-    );
-}
+            if (
+                typeof order._id !== "string" ||
+                !/^[a-f0-9]{24}$/i.test(order._id)
+            ) {
+                throw new Error(
+                    "The server did not return a valid order ID. " +
+                    "Check the order with the administrator before retrying."
+                );
+            }
 
-// Save the order ID and secure status token.
-if (
-    typeof orderData.statusToken !== "string" ||
-    !/^[a-f0-9]{64}$/i.test(orderData.statusToken)
-) {
-    savePendingOrder(order._id);
-
-    checkoutStageActive = true;
-    displayCart();
-
-    throw new Error(
-        "The order was created, but its secure status token " +
-        "was not returned. Do not create another order or payment. " +
-        "The existing order must be verified."
-    );
-}
-
-savePendingOrder(order._id, orderData.statusToken);
-checkoutStageActive = true;
-displayCart();
+            // Save the order ID before initiating payment.
+            // Do not create a second order if a later step fails.
+            savePendingOrder(order._id);
+            checkoutStageActive = true;
+            displayCart();
 
             showPaymentMessage(
                 "Order created. Preparing your M-Pesa request..."
@@ -1368,10 +1261,7 @@ displayCart();
 
             const totalPrice = Number(order.totalPrice);
 
-            if (
-                !Number.isFinite(totalPrice) ||
-                totalPrice <= 0
-            ) {
+            if (!Number.isFinite(totalPrice) || totalPrice <= 0) {
                 throw new Error(
                     "The server returned an invalid order total. " +
                     "Check this order's status before retrying."
@@ -1386,11 +1276,9 @@ displayCart();
                 `${API_URL}/api/mpesa/stkpush`,
                 {
                     method: "POST",
-
                     headers: {
                         "Content-Type": "application/json"
                     },
-
                     body: JSON.stringify({
                         phone: mpesaPhone,
                         amount: totalPrice,
@@ -1426,7 +1314,7 @@ displayCart();
 
             if (currentOrderId) {
                 // The STK request may have reached Safaricom even if
-                // the browser received an error. Do not resend it here.
+                // the browser received an error. Never resend it here.
                 payBtn.disabled = false;
                 payBtn.textContent = "Check Payment Status";
 
@@ -1448,23 +1336,6 @@ displayCart();
 function startPaymentPolling(orderId) {
     if (!orderId) return;
 
-    if (!currentOrderStatusToken) {
-        stopPaymentPolling();
-
-        showPaymentMessage(
-            "The secure token for this existing order is missing. " +
-            "Do not pay again. Contact the site administrator to " +
-            "verify the existing order."
-        );
-
-        if (payBtn) {
-            payBtn.disabled = false;
-            payBtn.textContent = "Check Payment Status";
-        }
-
-        return;
-    }
-
     const id = String(orderId);
 
     if (
@@ -1475,7 +1346,6 @@ function startPaymentPolling(orderId) {
     }
 
     stopPaymentPolling();
-
     paymentPollingOrderId = id;
 
     let attempts = 0;
@@ -1511,47 +1381,39 @@ function startPaymentPolling(orderId) {
                 return;
             }
 
-         
-const status = getPaymentStatus(data);
-const failureReason =
-    data.failureReason || data.order?.failureReason;
+            const status = getPaymentStatus(data);
+            const failureReason =
+                data.failureReason || data.order?.failureReason;
 
-// Payment confirmed
-if (status === "paid") {
-    stopPaymentPolling();
-    await handlePaymentSuccess();
-    return;
-}
+            if (status === "paid") {
+                stopPaymentPolling();
+                await handlePaymentSuccess();
+                return;
+            }
 
-// Payment outcome needs manual verification
-if (status === "pending" && failureReason) {
-    stopPaymentPolling();
+            // A pending order with a failure reason needs investigation.
+            if (status === "pending" && failureReason) {
+                stopPaymentPolling();
 
-    showPaymentMessage(
-        "Payment requires manual verification: " +
-        failureReason +
-        ". Do not pay again until the order is checked."
-    );
+                showPaymentMessage(
+                    "Payment requires manual verification: " +
+                    failureReason +
+                    ". Do not pay again until the order is checked."
+                );
 
-    if (payBtn) {
-        payBtn.disabled = false;
-        payBtn.textContent = "Check Payment Status";
-    }
+                if (payBtn) {
+                    payBtn.disabled = false;
+                    payBtn.textContent = "Check Payment Status";
+                }
 
-    return;
-}
+                return;
+            }
 
-
-            if (
-                status === "failed" ||
-                status === "cancelled"
-            ) {
+            if (status === "failed" || status === "cancelled") {
                 stopPaymentPolling();
 
                 await handlePaymentFailure(
-                    data.failureReason ||
-                    data.order?.failureReason ||
-                    "Payment failed or was cancelled."
+                    failureReason || "Payment failed or was cancelled."
                 );
 
                 return;
@@ -1562,10 +1424,7 @@ if (status === "pending" && failureReason) {
                 "If this takes too long, you can check the status again."
             );
         } catch (error) {
-            console.error(
-                "Payment status polling error:",
-                error
-            );
+            console.error("Payment status polling error:", error);
 
             showPaymentMessage(
                 "We temporarily could not check your payment status. " +
@@ -1612,14 +1471,13 @@ if (currentOrderId) {
         paymentBox.style.display = "block";
     }
 
-    // Keep Checkout available for a new order.
     if (checkoutBtn) {
         checkoutBtn.style.display = "block";
     }
 
     showPaymentMessage(
         "Your previous order is awaiting confirmation. " +
-        "Its status is still being checked. Verify it before making another payment."
+        "Its status must be verified before making another payment."
     );
 
     startPaymentPolling(currentOrderId);
@@ -1628,9 +1486,6 @@ if (currentOrderId) {
 // Refresh food and stock information every 30 seconds.
 setInterval(() => {
     loadFoods().catch(error => {
-        console.error(
-            "Automatic food refresh failed:",
-            error
-        );
+        console.error("Automatic food refresh failed:", error);
     });
 }, 30000);

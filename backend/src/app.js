@@ -63,20 +63,19 @@ app.use(
             return callback(new Error("CORS: Origin not allowed"));
         },
 
-        methods: [
-            "GET",
-            "POST",
-            "PUT",
-            "PATCH",
-            "DELETE",
-            "OPTIONS"
-        ],
-
-        allowedHeaders: [
+      methods: [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS"
+],
+allowedHeaders: [
     "Content-Type",
-    "Authorization",
-    "X-Order-Status-Token"
+    "Authorization"
 ]
+
     })
 );
 
