@@ -900,12 +900,13 @@ function validateCartAgainstStock() {
     return true;
 }
 
-// ======================================
+ // ======================================
 // CHECKOUT
 // ======================================
 
 if (checkoutBtn) {
     checkoutBtn.addEventListener("click", async () => {
+        // Prevent overlapping payment or status requests.
         if (paymentRequestInProgress || statusCheckInProgress) {
             showPaymentMessage(
                 "Please wait for the current request to finish."
@@ -913,26 +914,40 @@ if (checkoutBtn) {
             return;
         }
 
-        // Do not abandon an order whose payment is unresolved.
+        // An existing order must be verified before another payment.
         if (currentOrderId) {
+            checkoutStageActive = true;
+
             if (paymentBox) {
                 paymentBox.style.display = "block";
             }
+
+            // Hide Checkout and refresh the basket display.
+            displayCart();
 
             await checkCurrentPaymentStatus();
             return;
         }
 
+        // Prevent checkout with an empty basket.
         if (shoppingCart.length === 0) {
-            alert("Your shopping basket is empty. Add food before checkout.");
+            alert(
+                "Your shopping basket is empty. Add food before checkout."
+            );
             return;
         }
 
-        checkoutBtn.disabled = true;
+        if (checkoutBtn) {
+            checkoutBtn.disabled = true;
+        }
 
         try {
+            // Confirm that the selected food is still available.
             await refreshStock();
             validateCartAgainstStock();
+
+            // Enter checkout mode only after stock validation succeeds.
+            checkoutStageActive = true;
 
             if (paymentBox) {
                 paymentBox.style.display = "block";
@@ -955,7 +970,11 @@ if (checkoutBtn) {
                 "Your basket is ready. Enter your details to place your order."
             );
 
+            // Hide Checkout and update the basket display.
+            displayCart();
+
             customerNameInput?.focus();
+
         } catch (error) {
             console.error("Checkout stock check error:", error);
 
@@ -963,11 +982,14 @@ if (checkoutBtn) {
                 error.message ||
                 "Could not verify food stock. Please try again."
             );
+
         } finally {
+            // Refresh the basket without overriding checkout mode.
             displayCart();
         }
     });
 }
+
 
 // ======================================
 // HANDLE CONFIRMED PAYMENT SUCCESS
