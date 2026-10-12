@@ -1,4 +1,4 @@
-provide full code of this correct version as we have being discussing.// ======================================
+// ======================================
 // API CONFIGURATION
 // ======================================
 
@@ -602,7 +602,7 @@ function displayCart() {
 
     cartItems.innerHTML = "";
 
-
+   
 if (shoppingCart.length === 0) {
     cartItems.innerHTML = "<p>Your basket is empty.</p>";
 
@@ -730,7 +730,7 @@ if (shoppingCart.length === 0) {
     cartTotal.textContent = total.toLocaleString();
     cartCount.textContent = count;
 
-
+    
 checkoutBtn.style.display = checkoutStageActive ? "none" : "block";
 
     const cartCanBeOrdered = shoppingCart.every(item => {
@@ -1150,7 +1150,7 @@ async function checkCurrentPaymentStatus() {
     showPaymentMessage("Checking your M-Pesa payment status...");
 
     try {
-       const data = await fetchPaymentStatus(orderIdBeingChecked);
+       const data = await fetchPaymentStatus(orderIdBeingChecked);     
         if (String(currentOrderId) !== orderIdBeingChecked) {
             return;
         }
@@ -1511,7 +1511,7 @@ function startPaymentPolling(orderId) {
                 return;
             }
 
-
+         
 const status = getPaymentStatus(data);
 const failureReason =
     data.failureReason || data.order?.failureReason;
