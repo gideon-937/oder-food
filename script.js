@@ -787,7 +787,12 @@ function showPaymentMessage(message) {
 
 function resetPaymentUI() {
     if (paymentBox) {
-        paymentBox.style.display = currentOrderId ? "block" : "none";
+        // Keep the payment form visible once checkout has been opened,
+        // or whenever an order is awaiting payment confirmation.
+        paymentBox.style.display =
+            (checkoutStageActive || currentOrderId)
+                ? "block"
+                : "none";
     }
 
     if (paymentStatus) {
