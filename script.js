@@ -299,11 +299,37 @@ function getFoodImageUrl(image) {
 
     image = String(image).trim();
 
+    if (image.startsWith("data:")) {
+        return image;
+    }
+
     if (
         image.startsWith("https://") ||
-        image.startsWith("http://") ||
-        image.startsWith("data:")
+        image.startsWith("http://")
     ) {
+        try {
+            const imageUrl = new URL(image);
+
+            if (
+                imageUrl.hostname === "res.cloudinary.com" &&
+                imageUrl.pathname.includes("/image/upload/") &&
+                !/^\/image\/upload\/(?:[^/]+,)*f_auto(?:,|\/)/.test(
+                    imageUrl.pathname.substring(
+                        imageUrl.pathname.indexOf("/image/upload/") +
+                        "/image/upload/".length
+                    )
+                )
+            ) {
+                imageUrl.pathname = imageUrl.pathname.replace(
+                    "/image/upload/",
+                    "/image/upload/f_auto,q_auto/"
+                );
+                return imageUrl.toString();
+            }
+        } catch (error) {
+            // Preserve the original URL if it cannot be parsed.
+        }
+
         return image;
     }
 
