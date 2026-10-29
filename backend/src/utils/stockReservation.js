@@ -37,7 +37,7 @@ export const releaseStockReservation = async (orderId, reason) => {
                     }
                 },
                 {
-                    new: true,
+                    returnDocument: "after",
                     session
                 }
             );

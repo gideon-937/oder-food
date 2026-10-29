@@ -1,4 +1,4 @@
-﻿import mongoose from "mongoose";
+import mongoose from "mongoose";
 import Order from "../models/order.model.js";
 import { stkPush } from "../services/mpesa.js";
 import { releaseStockReservation } from "../utils/stockReservation.js";
@@ -153,7 +153,7 @@ export const initiatePayment = async (req, res) => {
                 }
             },
             {
-                new: true
+                returnDocument: "after"
             }
         );
 
@@ -215,7 +215,7 @@ export const initiatePayment = async (req, res) => {
                 }
             },
             {
-                new: true
+                returnDocument: "after"
             }
         );
 
@@ -499,7 +499,7 @@ export const mpesaCallback = async (req, res) => {
                     $set: evidence
                 },
                 {
-                    new: true
+                    returnDocument: "after"
                 }
             );
 
@@ -546,7 +546,7 @@ export const mpesaCallback = async (req, res) => {
                 }
             },
             {
-                new: true,
+                returnDocument: "after",
                 runValidators: true
             }
         );
